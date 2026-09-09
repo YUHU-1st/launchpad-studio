@@ -2,6 +2,8 @@
 
 A Windows desktop controller for the Novation Launchpad family. It combines a model-aware LED canvas, live PC telemetry, programmable macro pads, pixel video playback, analysed music shows, low-latency audio-reactive lighting, desktop utilities and small games.
 
+**Windows users:** download the ready-to-run package from [Latest Release](https://github.com/YUHU-1st/launchpad-studio/releases/latest), extract it, and run `LaunchpadStudio.exe`. No Python installation is required.
+
 ## Start
 
 1. Connect the Launchpad and close Ableton/other programs that may own its MIDI port.

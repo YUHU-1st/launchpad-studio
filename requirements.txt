@@ -1,0 +1,9 @@
+numpy>=2.0
+Pillow>=10.0
+pystray>=0.19
+psutil>=6.0
+opencv-python>=4.10
+sounddevice>=0.5
+soundfile>=0.12
+PyAudioWPatch>=0.2.12
+screeninfo>=0.8

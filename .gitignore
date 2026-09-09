@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.pdb
+*.log
+data/settings.json
+build/
+dist/
+*.spec
+tools/TemperatureHelper/bin/
+tools/TemperatureHelper/obj/
+tools/TemperatureHelper/publish-old-*/
+vendor/
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini

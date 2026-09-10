@@ -7,7 +7,7 @@
 - Added auto-chart Waterfall and radial arcade-style rhythm games with beat/transient/frequency analysis, three difficulties, 1–5 note speed, 4–8 lanes, pause, timing grades, combo, accuracy and high scores.
 - Added a global Stop All and Black Out action in the application header.
 - Fixed the right-side inspector width at the default window size.
-- Replaced the README with complete Chinese and English documentation, real UI screenshots, an animated demo and an MP4 demo.
+- Replaced the README with complete Chinese and English documentation, screenshots for every mode and game, a full overview video and ten individual feature videos.
 
 ## 1.2.0 - 2026-09-10
 

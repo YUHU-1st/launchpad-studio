@@ -11,8 +11,12 @@ A Windows desktop control center for the Novation Launchpad family, combining ha
 </p>
 
 <p align="center">
-  <a href="docs/media/launchpad-studio-demo.mp4">观看高清 MP4 演示 / Watch the HD MP4 demo</a>
+  <a href="docs/media/launchpad-studio-demo.mp4">观看全模式高清 MP4 演示 / Watch the all-mode HD MP4 demo</a>
 </p>
+
+演示依次覆盖性能监控、宏按键、视频播放、音乐演示、实时拾音、时钟/日历/天气/专注工具、贪吃蛇、打地鼠、瀑布音游和环形音游。下方另有每项功能的独立视频。
+
+The overview covers performance, macros, video, music, live audio, clock/calendar/weather/focus tools, Snake, Whack-a-Mole, Waterfall, and the radial rhythm game. Individual feature videos are linked below.
 
 ## 中文介绍
 
@@ -41,9 +45,87 @@ A Windows desktop control center for the Novation Launchpad family, combining ha
 
 ### 界面截图
 
-| 性能与硬件温度监控 | 自动谱面环形音游 |
-| --- | --- |
-| ![性能监控界面](docs/media/overview.png) | ![环形音游界面](docs/media/rhythm-game.png) |
+每段独立视频都录制真实软件界面与同步的虚拟 Launchpad 灯板，便于在下载前完整预览操作区、参数和灯效。
+
+#### 1. 性能与温度监控
+
+将 CPU、内存、GPU、磁盘、网络与磁盘吞吐量映射成动态灯柱，圆形控制键显示最高温度趋势；界面同时列出 CPU、GPU、主板和存储温度，并提示传感器权限状态。支持整体配色、亮度和并行宏控制。
+
+[观看独立视频](docs/media/performance-demo.mp4)
+
+![性能与温度监控](docs/media/overview.png)
+
+#### 2. 宏按键
+
+点击屏幕键位即可配置单键颜色和操作，支持热键、文字、文件/程序、网址、命令、PowerShell、媒体键、按键序列、鼠标、系统操作、音量及带等待步骤的组合动作。可测试、覆盖或只清除当前按键；非游戏灯效运行时也能独立启用宏控制。
+
+[观看独立视频](docs/media/macros-demo.mp4)
+
+![宏按键配置](docs/media/macros.png)
+
+#### 3. 视频像素播放器
+
+把视频实时缩放到对应 Launchpad 布局，提供可拖动进度条、上下一个、播放/暂停、0.5×–3× 速度、列表/单曲/不循环和播放列表。原色、热图、边缘、单色辉光、万花筒、故障滤镜可继续调节帧率、饱和度、对比度、伽马与阈值，并支持预设及跨模式参数复制。
+
+[观看独立视频](docs/media/video-player-demo.mp4)
+
+![视频像素播放器](docs/media/video-player.png)
+
+#### 4. 音乐灯光播放器
+
+导入音频后离线识别 BPM、情绪、能量和风格，音频播放、变速、定位与灯光使用同一时间轴。频谱、对称频谱、波形、脉冲、涟漪、星云、雨幕、火焰、隧道和棋盘均可调频段、响度、灵敏度、噪声阈值、速度与扩散，并保存为预设。
+
+[观看独立视频](docs/media/music-show-demo.mp4)
+
+![音乐灯光播放器](docs/media/music-show.png)
+
+#### 5. 实时拾音
+
+可选择麦克风或 Windows WASAPI 系统回放设备，以约 20–45 ms 目标延迟驱动完整音乐可视化引擎。输入设备、风格、频率/响度范围、灵敏度、门限、速度、扩散、配色和亮度均可实时调整并自动记忆。
+
+[观看独立视频](docs/media/live-audio-demo.mp4)
+
+![实时拾音](docs/media/live-audio.png)
+
+#### 6. 桌面工具
+
+数字时钟滚动显示 24 小时时间，日历显示日期与星期进度，天气无需 API Key 即可展示气温、体感、降水、湿度和风速，专注计时器支持 1–180 分钟及暂停/继续。独立视频依次预览四项工具及对应灯板画面。
+
+[观看独立视频](docs/media/desktop-utilities-demo.mp4)
+
+![数字时钟工具](docs/media/utilities.png)
+
+#### 7. 贪吃蛇
+
+键盘或实机顶排 `↑ ↓ ← →` 控制，越过任意边缘会从对侧出现；简单/普通/困难影响移动节奏，得分自动提升关卡速度。界面实时显示得分、关卡和最高分，吃到食物时播放庆祝灯效。
+
+[观看独立视频](docs/media/snake-demo.mp4)
+
+![贪吃蛇与实时计分板](docs/media/casual-games.png)
+
+#### 8. 打地鼠
+
+按下随机亮起的实体按键得分，每次命中会刷新完整反应时间；难度控制反应窗口与机会数量，关卡随得分提升。剩余机会同时显示在侧边灯列和实时计分板，命中触发得分光效。
+
+[观看独立视频](docs/media/whack-a-mole-demo.mp4)
+
+![打地鼠与实时计分板](docs/media/whack-a-mole.png)
+
+#### 9. 瀑布音游
+
+导入音乐后预先分析节拍、瞬态和频段生成谱面，音符从顶部落向底部判定线。可选简单/普通/困难、1–5 级速度和 4–8 键；支持暂停/继续，并实时统计 Perfect/Great/Good/Miss、连击、准确率、得分与最高分。
+
+[观看独立视频](docs/media/waterfall-demo.mp4)
+
+![自动谱面瀑布音游](docs/media/waterfall-game.png)
+
+#### 10. 环形音游
+
+使用同一套音乐分析器自动编谱，音符从中心向 Launchpad 外圈目标扩散，形成类似环形街机音游的演奏体验。难度、速度、键数、暂停、判定、连击、准确率和最高分功能与瀑布模式一致。
+
+[观看独立视频](docs/media/radial-rhythm-demo.mp4)
+
+![自动谱面环形音游](docs/media/rhythm-game.png)
 
 ### 支持设备
 
@@ -88,9 +170,87 @@ Browsing another page does not interrupt the current lighting, audio, game, or p
 
 ### Screenshots
 
-| Performance and hardware temperatures | Auto-chart radial rhythm game |
-| --- | --- |
-| ![Performance monitor](docs/media/overview.png) | ![Radial rhythm game](docs/media/rhythm-game.png) |
+Each feature video records the real application UI and synchronized virtual Launchpad canvas, so its controls, parameters, and LED output can be previewed before downloading.
+
+#### 1. Performance and temperatures
+
+Maps CPU, memory, GPU, disk, network, and storage throughput to animated LED columns. Round controls visualize the hottest sensor while the panel reports CPU, GPU, motherboard, and drive temperatures and sensor permission status. Global palette, brightness, and parallel macro control remain available.
+
+[Watch this feature](docs/media/performance-demo.mp4)
+
+![Performance and temperature monitoring](docs/media/overview.png)
+
+#### 2. Per-pad macros
+
+Click a visual pad to assign its color and action: hotkey, text, file/app, URL, command, PowerShell, media key, key sequence, mouse, system command, volume, or a multi-step workflow with delays. Test, overwrite, or clear only the selected pad, and optionally run macros independently over any non-game light show.
+
+[Watch this feature](docs/media/macros-demo.mp4)
+
+![Per-pad macro editor](docs/media/macros.png)
+
+#### 3. Pixel video player
+
+Downscales video in real time to the active Launchpad layout, with a draggable timeline, previous/next, play/pause, 0.5x–3x speed, playlist, and no-loop/single/list loop modes. Original, heatmap, edge, monochrome glow, kaleidoscope, and glitch filters expose FPS, saturation, contrast, gamma, and threshold controls with presets and cross-mode copy/paste.
+
+[Watch this feature](docs/media/video-player-demo.mp4)
+
+![Pixel video player](docs/media/video-player.png)
+
+#### 4. Analyzed music light show
+
+Offline analysis identifies BPM, mood, energy, and style. Playback, speed, seeking, and LEDs share one timeline. Spectrum, mirrored spectrum, waveform, pulse, ripple, nebula, rain, flame, tunnel, and checkerboard styles expose frequency, loudness, sensitivity, gate, speed, and spread controls that can be saved as presets.
+
+[Watch this feature](docs/media/music-show-demo.mp4)
+
+![Analyzed music light show](docs/media/music-show.png)
+
+#### 5. Live audio capture
+
+Select a microphone or Windows WASAPI loopback input and drive the full visualization engine at a target latency of roughly 20–45 ms. Device, style, frequency/loudness range, sensitivity, gate, speed, spread, palette, and brightness update live and persist automatically.
+
+[Watch this feature](docs/media/live-audio-demo.mp4)
+
+![Live audio capture](docs/media/live-audio.png)
+
+#### 6. Desktop utilities
+
+The digital clock scrolls 24-hour time, Calendar shows date and weekday progress, key-free Weather displays temperature, apparent temperature, rain, humidity, and wind, and Focus Timer supports 1–180 minutes with pause/resume. The feature video previews all four tools and their LED frames in sequence.
+
+[Watch this feature](docs/media/desktop-utilities-demo.mp4)
+
+![Digital clock utility](docs/media/utilities.png)
+
+#### 7. Snake
+
+Use the keyboard or the physical top-row `↑ ↓ ← →` controls. Crossing any edge wraps to the opposite side; Easy/Normal/Hard changes pacing and score-driven stages increase speed. The panel updates score, stage, and high score live, with a celebration effect after food is collected.
+
+[Watch this feature](docs/media/snake-demo.mp4)
+
+![Snake and live scoreboard](docs/media/casual-games.png)
+
+#### 8. Whack-a-Mole
+
+Hit the randomly lit physical pad before it expires; every successful hit restores the full response window. Difficulty controls timing and available chances while stages increase with score. Remaining chances appear on both the side LED column and live scoreboard, and hits trigger a score effect.
+
+[Watch this feature](docs/media/whack-a-mole-demo.mp4)
+
+![Whack-a-Mole and live scoreboard](docs/media/whack-a-mole.png)
+
+#### 9. Waterfall rhythm game
+
+Import music to analyze beats, transients, and bands before generating a chart. Notes descend toward the bottom judgment line. Choose Easy/Normal/Hard, speed 1–5, and 4–8 lanes; pause/resume and live Perfect/Great/Good/Miss, combo, accuracy, score, and high-score tracking are included.
+
+[Watch this feature](docs/media/waterfall-demo.mp4)
+
+![Auto-chart Waterfall rhythm game](docs/media/waterfall-game.png)
+
+#### 10. Radial rhythm game
+
+The same music analyzer generates a chart whose notes expand from the center toward outer Launchpad targets for a radial arcade-style experience. Difficulty, speed, lane count, pause, grades, combo, accuracy, score, and high-score controls match Waterfall mode.
+
+[Watch this feature](docs/media/radial-rhythm-demo.mp4)
+
+![Auto-chart radial rhythm game](docs/media/rhythm-game.png)
 
 ### Supported hardware
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0 - 2026-09-10
+
+- Added a non-blocking, palette-aware score celebration effect to both games.
+- Separated the visible configuration page from the active Launchpad mode.
+- Kept the previous light show running while browsing other pages; a new mode now takes over only when Start, Play or Enable is pressed.
+- Added an explicit Macro lighting enable button and protected background game controls, difficulty and player completion events during page navigation.
+
 ## 1.1.0 - 2026-09-10
 
 - Added Easy, Normal and Hard difficulty settings plus automatic game levels.

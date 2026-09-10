@@ -138,9 +138,10 @@ class LaunchpadStudio(tk.Tk):
         self.live = None
         self.weather=WeatherService(); self.weather_data=None
         self.snake=SnakeGame(); self.mole=WhackAMole()
-        self.utility_running=False; self.utility_job=None; self.utility_phase=0
+        self.utility_running=False; self.utility_job=None; self.utility_phase=0; self.active_utility=None
+        self.score_effect_token=0
         self.focus_deadline=None; self.focus_remaining=0; self.focus_paused=False
-        self.mode = "性能监控"
+        self.mode = "性能监控"; self.active_mode=None
         self.running_perf = False
         self.video_path = ""
         self.audio_path = ""
@@ -248,11 +249,9 @@ class LaunchpadStudio(tk.Tk):
                 except Exception:pass
                 self._param_save_job=None
             self._save_detail_now(previous)
-        if getattr(self,"mode",None)=="工具与游戏":self._stop_utility(clear=False)
-        self.video.stop()
-        if self.music: self.music.stop()
-        if self.live: self.live.stop()
-        self.running_perf=False; self.mode=name; self._clear_page()
+        # Page navigation is only configuration/navigation.  The currently
+        # active light show keeps ownership until another mode is started.
+        self.mode=name; self._clear_page()
         for n,b in self.mode_buttons.items(): b.configure(bg=PANEL2 if n==name else PANEL,fg="#c8bfff" if n==name else TEXT)
         {"性能监控":self._page_performance,"宏按键":self._page_macros,"视频播放":self._page_video,
          "音乐演示":self._page_music,"实时拾音":self._page_live,"工具与游戏":self._page_utilities}[name]()
@@ -280,21 +279,23 @@ class LaunchpadStudio(tk.Tk):
         ttk.Button(self.page,text="停止",command=self._stop_all).pack(fill="x")
 
     def _start_perf(self):
+        self._activate_mode("性能监控")
         self.running_perf=True; self.set_status("性能监控运行中 · 2 Hz"); self._perf_tick()
 
     def _perf_tick(self):
-        if not self.running_perf or self.mode!="性能监控": return
+        if not self.running_perf or self.active_mode!="性能监控": return
         stats=self.performance.sample()
-        for k,l in getattr(self,"metric_labels",{}).items():
-            v=stats[k]; l.configure(text="不可用" if v is None else (f"{v:.1f}%" if k in ["CPU","RAM","GPU","磁盘"] else f"{v:.1f}"))
-        temps=stats.get("temperatures",{})
-        for k,l in getattr(self,"temp_labels",{}).items():
-            v=temps.get(k)
-            if isinstance(v,(int,float)):
-                color=BAD if v>=85 else "#fbbf24" if v>=70 else GOOD
-                l.configure(text=f"{v:.1f} °C",fg=color)
-            else:
-                l.configure(text="需权限 / 无传感器",fg=MUTED)
+        if self.mode=="性能监控":
+            for k,l in getattr(self,"metric_labels",{}).items():
+                v=stats[k]; l.configure(text="不可用" if v is None else (f"{v:.1f}%" if k in ["CPU","RAM","GPU","磁盘"] else f"{v:.1f}"))
+            temps=stats.get("temperatures",{})
+            for k,l in getattr(self,"temp_labels",{}).items():
+                v=temps.get(k)
+                if isinstance(v,(int,float)):
+                    color=BAD if v>=85 else "#fbbf24" if v>=70 else GOOD
+                    l.configure(text=f"{v:.1f} °C",fg=color)
+                else:
+                    l.configure(text="需权限 / 无传感器",fg=MUTED)
         self.apply_frame(self.performance.frame(stats,self.palette_var.get(),self.brightness.get()/100))
         self.after(500,self._perf_tick)
 
@@ -320,7 +321,8 @@ class LaunchpadStudio(tk.Tk):
         ttk.Button(self.page,text="选择此按键颜色",command=self._pick_macro_color).pack(fill="x",pady=(12,6))
         ttk.Button(self.page,text="保存按键",style="Accent.TButton",command=self._save_macro).pack(fill="x",pady=6)
         ttk.Button(self.page,text="测试执行",command=self._test_macro).pack(fill="x")
-        self._load_macro_form(*self.selected_pad); self._render_macro_profile()
+        ttk.Button(self.page,text="启用宏按键灯光",command=self._start_macros).pack(fill="x",pady=(12,0))
+        self._load_macro_form(*self.selected_pad)
 
     def _macro_key(self,x,y):
         return self.lp.macro_key(x,y)
@@ -341,11 +343,16 @@ class LaunchpadStudio(tk.Tk):
 
     def _save_macro(self):
         key=self._macro_key(*self.selected_pad); self.settings_store.data["macros"][key]={"action":self.action_var.get(),"value":self.macro_value.get().strip(),"color":self.macro_color}
-        self.settings_store.save(); self._render_macro_profile(); self.set_status(f"按键 {key} 已保存")
+        self.settings_store.save()
+        if self.active_mode=="宏按键":self._render_macro_profile()
+        self.set_status(f"按键 {key} 已保存")
 
     def _test_macro(self):
         macro=self._macro_get(*self.selected_pad)
         if macro: self.macro_exec.execute(macro)
+
+    def _start_macros(self):
+        self._activate_mode("宏按键"); self._render_macro_profile(); self.set_status("宏按键模式运行中")
 
     def _render_macro_profile(self):
         frame={xy:(0,0,0) for xy in self.lp.pads}
@@ -396,6 +403,7 @@ class LaunchpadStudio(tk.Tk):
         sel=self.video_list.curselection() if hasattr(self,"video_list") else ()
         if sel:self.video_index=sel[0]
         if not (0<=self.video_index<len(self.video_playlist)):return messagebox.showinfo("Launchpad Studio","请先添加视频。")
+        self._activate_mode("视频播放")
         self.video_path=self.video_playlist[self.video_index]
         self.video_list.selection_clear(0,"end"); self.video_list.selection_set(self.video_index); self.video_list.see(self.video_index)
         params=self._video_params(); self.video.start(self.video_path,self.video_fps.get(),self.brightness.get()/100,
@@ -481,6 +489,7 @@ class LaunchpadStudio(tk.Tk):
         sel=self.audio_list.curselection() if hasattr(self,"audio_list") else ()
         if sel:self.audio_index=sel[0]
         if not (0<=self.audio_index<len(self.audio_playlist)):return messagebox.showinfo("Launchpad Studio","请先添加音频。")
+        self._activate_mode("音乐演示")
         self.audio_path=self.audio_playlist[self.audio_index]; self.audio_list.selection_clear(0,"end"); self.audio_list.selection_set(self.audio_index); self.audio_list.see(self.audio_index)
         try:
             if not self.music:self.music=MusicShow(self.submit_frame,self.set_status,self._audio_progress,self._audio_finished)
@@ -731,6 +740,7 @@ class LaunchpadStudio(tk.Tk):
         if not self.live_devices:return messagebox.showerror("没有输入设备","未发现可用的麦克风或回放输入设备。")
         idx=self.live_combo.current(); device=self.live_devices[max(0,idx)][0]
         try:
+            self._activate_mode("实时拾音")
             if not self.live:self.live=LiveAudio(self.submit_frame,self.set_status)
             self.live.start(device,self.live_style.get(),self.palette_var.get(),self.brightness.get()/100,self._visual_params(self.live_visual_vars))
         except Exception as e:messagebox.showerror("拾音启动失败",str(e))
@@ -754,7 +764,6 @@ class LaunchpadStudio(tk.Tk):
         self._build_utility_options()
 
     def _utility_selection_changed(self):
-        self._stop_utility(clear=False)
         self.settings_store.data["utilities"]["selected"]=self.utility_choice.get(); self.settings_store.save()
         self._build_utility_options()
 
@@ -800,10 +809,11 @@ class LaunchpadStudio(tk.Tk):
         if choice not in ("贪吃蛇","打地鼠"):return
         key="snake_difficulty" if choice=="贪吃蛇" else "mole_difficulty"
         self.settings_store.data["utilities"][key]=self.game_difficulty.get(); self.settings_store.save()
-        if self.utility_running:self._start_utility()
+        self.set_status("难度已保存；点击开始后生效")
 
     def _game_delay(self,choice):
-        difficulty=self.game_difficulty.get() if hasattr(self,"game_difficulty") else "简单"
+        key="snake_difficulty" if choice=="贪吃蛇" else "mole_difficulty"
+        difficulty=self.settings_store.data["utilities"].get(key,"简单")
         if choice=="贪吃蛇":
             base={"简单":520,"普通":340,"困难":230}.get(difficulty,520)
             floor={"简单":220,"普通":140,"困难":95}.get(difficulty,220)
@@ -816,16 +826,41 @@ class LaunchpadStudio(tk.Tk):
         cfg=self.settings_store.data["utilities"]
         if choice=="贪吃蛇":
             high=max(cfg.get("snake_high_score",0),self.snake.score)
-            self.utility_info.configure(text=f"得分 {self.snake.score} · 第 {self.snake.level} 关\n最高 {high}")
+            self._set_utility_info(f"得分 {self.snake.score} · 第 {self.snake.level} 关\n最高 {high}",choice)
             return high
         high=max(cfg.get("mole_high_score",0),self.mole.score)
         remaining=max(0,self.mole.max_misses-self.mole.misses)
-        self.utility_info.configure(text=f"得分 {self.mole.score} · 第 {self.mole.level} 关\n剩余机会 {remaining}/{self.mole.max_misses} · 最高 {high}")
+        self._set_utility_info(f"得分 {self.mole.score} · 第 {self.mole.level} 关\n剩余机会 {remaining}/{self.mole.max_misses} · 最高 {high}",choice)
         return high
 
+    def _set_utility_info(self,text,choice=None):
+        visible=(self.mode=="工具与游戏" and hasattr(self,"utility_info") and
+                 (choice is None or self.utility_choice.get()==choice))
+        if visible:
+            try:self.utility_info.configure(text=text)
+            except tk.TclError:pass
+
+    def _play_score_effect(self,base_frame,score):
+        self.score_effect_token+=1; token=self.score_effect_token
+        low,high=self._utility_colors()
+        for phase,delay in enumerate((0,75,150)):
+            frame=dict(base_frame)
+            color=high if phase%2==0 else tuple(min(255,v+90) for v in low)
+            for x,y in ALL_PADS:
+                if frame.get((x,y),(0,0,0))!=(0,0,0):continue
+                if y==0 or x==8 or x in (0,7) or y in (1,8):
+                    if (x+y+phase+score)%3==0:frame[(x,y)]=color
+            self.after(delay,lambda f=frame,t=token:self._score_effect_step(t,f))
+        self.after(225,lambda f=dict(base_frame),t=token:self._score_effect_step(t,f))
+
+    def _score_effect_step(self,token,frame):
+        if token==self.score_effect_token and self.utility_running and self.active_mode=="工具与游戏":
+            self.apply_frame(frame)
+
     def _start_utility(self):
-        self._stop_utility(clear=False); choice=self.utility_choice.get(); cfg=self.settings_store.data["utilities"]
-        self.utility_running=True; self.utility_phase=0
+        choice=self.utility_choice.get(); cfg=self.settings_store.data["utilities"]
+        self._activate_mode("工具与游戏"); self._stop_utility(clear=False)
+        self.active_mode="工具与游戏"; self.active_utility=choice; self.utility_running=True; self.utility_phase=0
         if choice=="天气":
             city=self.weather_city.get().strip() or "北京"; cfg["weather_city"]=city; self.settings_store.save()
             self.utility_info.configure(text="正在获取天气…"); self.set_status(f"正在查询 {city} 天气")
@@ -853,26 +888,27 @@ class LaunchpadStudio(tk.Tk):
             self.set_status("天气已更新")
 
     def _utility_tick(self):
-        if not self.utility_running or self.mode!="工具与游戏":return
-        choice=self.utility_choice.get(); low,high=self._utility_colors(); now=datetime.now(); delay=500
+        if not self.utility_running or self.active_mode!="工具与游戏":return
+        choice=self.active_utility; low,high=self._utility_colors(); now=datetime.now(); delay=500; scored=False
         if choice=="数字时钟":
-            self.utility_info.configure(text=now.strftime("%H:%M:%S")); frame=clock_frame(now,self.utility_phase,low,high); delay=500
+            self._set_utility_info(now.strftime("%H:%M:%S"),choice); frame=clock_frame(now,self.utility_phase,low,high); delay=500
         elif choice=="日历":
-            weekdays="一二三四五六日"; self.utility_info.configure(text=f"{now:%Y年%m月%d日} · 星期{weekdays[now.weekday()]}")
+            weekdays="一二三四五六日"; self._set_utility_info(f"{now:%Y年%m月%d日} · 星期{weekdays[now.weekday()]}",choice)
             frame=calendar_frame(now,self.utility_phase,low,high); delay=700
         elif choice=="天气":
             frame=weather_frame(self.weather_data["code"],self.weather_data["temperature"],low,high) if self.weather_data else scrolling_text("----",self.utility_phase,low,high); delay=700
         elif choice=="专注计时器":
             if not self.focus_paused and self.focus_deadline:self.focus_remaining=max(0,int(self.focus_deadline-time.monotonic()+.999))
             minutes,seconds=divmod(self.focus_remaining,60); value=f"{minutes:02d}:{seconds:02d}"
-            self.utility_info.configure(text=value); frame=scrolling_text(value,self.utility_phase,low,high); delay=500
+            self._set_utility_info(value,choice); frame=scrolling_text(value,self.utility_phase,low,high); delay=500
             if self.focus_remaining<=0:
                 self.utility_running=False; self.set_status("专注计时完成")
                 try:self.tray_icon.notify("休息一下吧，专注计时已经完成。","Launchpad Studio")
                 except Exception:pass
         elif choice=="贪吃蛇":
-            alive=True
+            alive=True; previous_score=self.snake.score
             if not getattr(self,"snake_first_tick",False):alive=self.snake.tick()
+            scored=self.snake.score>previous_score
             self.snake_first_tick=False; frame=self.snake.frame(); high_score=self._update_game_scoreboard(choice); delay=self._game_delay(choice)
             if not alive:
                 self.settings_store.data["utilities"]["snake_high_score"]=high_score; self.settings_store.save(); self.utility_running=False; self.set_status("贪吃蛇游戏结束")
@@ -882,6 +918,7 @@ class LaunchpadStudio(tk.Tk):
             if not self.mole.running:
                 self.settings_store.data["utilities"]["mole_high_score"]=high_score; self.settings_store.save(); self.utility_running=False; self.set_status("打地鼠游戏结束")
         self.apply_frame(frame); self.utility_phase+=1
+        if scored:self._play_score_effect(frame,self.snake.score); delay=max(delay,260)
         if self.utility_running:self.utility_job=self.after(delay,self._utility_tick)
 
     def _pause_focus(self):
@@ -892,25 +929,30 @@ class LaunchpadStudio(tk.Tk):
             self.focus_remaining=max(0,int(self.focus_deadline-time.monotonic()+.999)); self.focus_paused=True; self.set_status("专注计时已暂停")
 
     def _reset_focus(self):
-        self._stop_utility(clear=True); self.focus_remaining=max(1,int(self.focus_minutes.get()))*60
+        if self.active_mode=="工具与游戏" and self.active_utility=="专注计时器":self._stop_utility(clear=True)
+        self.focus_remaining=max(1,int(self.focus_minutes.get()))*60
         if hasattr(self,"utility_info"):self.utility_info.configure(text=f"{self.focus_remaining//60:02d}:00")
 
     def _stop_utility(self,clear=False):
+        was_active=self.active_mode=="工具与游戏"
         self.utility_running=False
         if self.utility_job:
             try:self.after_cancel(self.utility_job)
             except Exception:pass
             self.utility_job=None
-        if clear:self.apply_frame({xy:(0,0,0) for xy in ALL_PADS}); self.set_status("工具/游戏已停止")
+        self.active_utility=None; self.score_effect_token+=1
+        if was_active:
+            self.active_mode=None
+            if clear:self.apply_frame({xy:(0,0,0) for xy in ALL_PADS}); self.set_status("工具/游戏已停止")
 
     def _utility_key(self,event):
-        if self.mode!="工具与游戏" or not self.utility_running or self.utility_choice.get()!="贪吃蛇":return
+        if self.active_mode!="工具与游戏" or not self.utility_running or self.active_utility!="贪吃蛇":return
         direction={"Left":(-1,0),"Up":(0,-1),"Down":(0,1),"Right":(1,0)}.get(event.keysym)
         if direction:self.snake.steer(direction)
 
     def _utility_pad(self,x,y):
         if not self.utility_running:return
-        choice=self.utility_choice.get()
+        choice=self.active_utility
         if choice=="贪吃蛇":
             directions={0:(0,-1),1:(0,1),2:(-1,0),3:(1,0)}
             if y==0 and x in directions:self.snake.steer(directions[x])
@@ -920,6 +962,7 @@ class LaunchpadStudio(tk.Tk):
         elif choice=="打地鼠" and 0<=x<8 and 1<=y<=8:
             hit=self.mole.hit((x,y)); self.set_status("命中！" if hit else "没有打中")
             high_score=self._update_game_scoreboard(choice); self.apply_frame(self.mole.frame())
+            if hit:self._play_score_effect(self.mole.frame(),self.mole.score)
             if not self.mole.running:
                 if self.utility_job:
                     try:self.after_cancel(self.utility_job)
@@ -944,10 +987,10 @@ class LaunchpadStudio(tk.Tk):
     def _handle_pad_ui(self,x,y,pressed):
         if not pressed:return
         self.pad_canvas.selected=(x,y); self.pad_canvas.draw()
-        if self.mode=="宏按键":
+        if self.active_mode=="宏按键":
             macro=self._macro_get(x,y)
             if macro:self.macro_exec.execute(macro); self.set_status(f"已执行按键 {self.lp.pad_label(x,y)} · {macro['action']}")
-        elif self.mode=="工具与游戏":self._utility_pad(x,y)
+        elif self.active_mode=="工具与游戏":self._utility_pad(x,y)
 
     def _palette_changed(self,_e=None):
         self.settings_store.data["theme"]=self.palette_var.get(); self.settings_store.save()
@@ -967,9 +1010,9 @@ class LaunchpadStudio(tk.Tk):
         self._settings_save_job=None; self.settings_store.save()
 
     def _global_visual_update(self):
-        if self.mode=="音乐演示" and hasattr(self,"music_visual_vars"):self._update_music_visual()
-        elif self.mode=="实时拾音" and hasattr(self,"live_visual_vars"):self._update_live_visual()
-        elif self.mode=="视频播放" and hasattr(self,"video_vars"):self._update_video_effect()
+        if self.active_mode=="音乐演示" and hasattr(self,"music_visual_vars"):self._update_music_visual()
+        elif self.active_mode=="实时拾音" and hasattr(self,"live_visual_vars"):self._update_live_visual()
+        elif self.active_mode=="视频播放" and hasattr(self,"video_vars"):self._update_video_effect()
 
     def _pick_global_color(self):
         value=colorchooser.askcolor(self.custom_color,title="整体主色")[1]
@@ -1019,6 +1062,7 @@ class LaunchpadStudio(tk.Tk):
 
     def _test_lights(self):
         if not self.lp.connected:return self._device_dialog()
+        self._activate_mode("灯光测试")
         self.lp.test_pattern(); self.pad_canvas.set_frame(self.lp.colors); self.set_status("RGB 全键灯光测试")
 
     def submit_frame(self,frame):
@@ -1064,8 +1108,8 @@ class LaunchpadStudio(tk.Tk):
                 elif kind=="status":self.status_var.set(event[1])
                 elif kind=="video_progress":latest_video=event[1:]
                 elif kind=="audio_progress":latest_audio=event[1:]
-                elif kind=="video_finished":self._advance_video(1,True)
-                elif kind=="audio_finished":self._advance_audio(1,True)
+                elif kind=="video_finished" and self.active_mode=="视频播放":self._advance_video(1,True)
+                elif kind=="audio_finished" and self.active_mode=="音乐演示":self._advance_audio(1,True)
                 elif kind=="weather_result":latest_weather=event[1]
                 elif kind=="weather_error":weather_error=event[1]
                 elif kind=="show_window":self._show_window()
@@ -1088,11 +1132,18 @@ class LaunchpadStudio(tk.Tk):
             if self.mode=="工具与游戏" and hasattr(self,"utility_info"):self.utility_info.configure(text=f"天气获取失败\n{weather_error}")
         if not self._closing:self.after(16,self._drain_ui_events)
 
+    def _activate_mode(self,name):
+        self.score_effect_token+=1; self.running_perf=False; self.video.stop()
+        if self.music:self.music.stop()
+        if self.live:self.live.stop()
+        self._stop_utility(clear=False); self.active_mode=name
+
     def _stop_all(self):
         self.running_perf=False; self.video.stop()
         if self.music:self.music.stop()
         if self.live:self.live.stop()
         self._stop_utility(clear=False)
+        self.active_mode=None; self.score_effect_token+=1
         self.set_status("已停止")
 
     def _tray_image(self):

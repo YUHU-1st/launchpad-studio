@@ -14,6 +14,8 @@ Run `安装桌面快捷方式.bat` once if you want a desktop shortcut. The shor
 
 Closing the visual window keeps Launchpad Studio running in the notification area. MIDI input, macros, monitoring and active light shows continue. Right-click the tray icon to reopen the visual interface or completely exit. Launching the app again activates the existing instance instead of creating a duplicate service.
 
+Opening another mode page only changes the visible controls: the current light show continues uninterrupted. A new mode takes over the Launchpad only after you press its Start/Play/Enable button. The Macro page has an explicit **Enable Macro Pad Lighting** button for the same reason.
+
 The on-screen device changes to the detected hardware layout. Standard models show the 8×8 grid plus top/right controls; Pro models also expose their left and bottom rows.
 
 ## Notes
@@ -24,7 +26,7 @@ The on-screen device changes to the detected hardware layout. Standard models sh
 - Audio-reactive modes provide 10 effects (spectrum, mirrored spectrum, waveform, pulse, ripple, nebula, rain, flame, tunnel and checkerboard) with frequency band, dB range, sensitivity, noise gate, animation speed and spread controls.
 - Video supports original color, heatmap, edge, monochrome glow, kaleidoscope and glitch filters with saturation, contrast, gamma and edge threshold controls.
 - Every detail parameter is saved automatically and restored on the next launch. Each effect page can reset defaults, save/load named presets, pick recently used presets, and copy/paste matching parameters between music, live-input and video modes.
-- **Tools & Games** includes a scrolling digital clock, calendar, current weather, focus timer, Snake and Whack-a-Mole. Both games have Easy/Normal/Hard difficulty, automatic levels, live scoreboards and persistent high scores. Snake wraps across every edge and uses the Launchpad's physical top-row `↑ ↓ ← →` controls; Whack-a-Mole grants a fresh reaction window after every hit and is played by pressing the lit physical pad.
+- **Tools & Games** includes a scrolling digital clock, calendar, current weather, focus timer, Snake and Whack-a-Mole. Both games have Easy/Normal/Hard difficulty, automatic levels, live scoreboards, persistent high scores and a short edge-wave celebration on every point. Snake wraps across every edge and uses the Launchpad's physical top-row `↑ ↓ ← →` controls; Whack-a-Mole grants a fresh reaction window after every hit and is played by pressing the lit physical pad.
 - Weather uses the Open-Meteo geocoding and forecast APIs, requires no API key, caches results for ten minutes, and fails safely when offline.
 - “System audio” capture uses Windows WASAPI loopback when the audio backend exposes a loopback device; otherwise select a microphone.
 - Performance mode reads CPU, GPU, motherboard and storage temperatures through the bundled LibreHardwareMonitor helper. Some laptop CPU and motherboard sensors require **Run with administrator privileges**; use the button in Performance mode when a value says permission is required.

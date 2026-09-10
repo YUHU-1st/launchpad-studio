@@ -34,7 +34,10 @@ DEFAULT = {
     "recent_presets": {"music": [], "live": [], "video": []},
     "utilities": {"selected": "数字时钟", "weather_city": "北京", "focus_minutes": 25,
                   "snake_high_score": 0, "mole_high_score": 0,
-                  "snake_difficulty": "简单", "mole_difficulty": "简单"},
+                  "snake_difficulty": "简单", "mole_difficulty": "简单",
+                  "rhythm_path": "", "rhythm_difficulty": "普通", "rhythm_speed": 3,
+                  "rhythm_lanes": 6, "waterfall_high_score": 0, "maimai_high_score": 0},
+    "macro_control_enabled": False,
     "live_device": "",
 }
 

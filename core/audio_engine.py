@@ -202,11 +202,12 @@ def reactive_frame(samples, sr, style="频谱", palette="霓虹", brightness=1.0
 
 
 class MusicShow:
-    def __init__(self, on_frame, on_status=None, on_progress=None, on_finished=None):
+    def __init__(self, on_frame, on_status=None, on_progress=None, on_finished=None, emit_frames=True):
         self.on_frame = on_frame
         self.on_status = on_status or (lambda _s: None)
         self.on_progress = on_progress or (lambda _p, _d: None)
         self.on_finished = on_finished or (lambda: None)
+        self.emit_frames = emit_frames
         self.analysis = None
         self.stop_event = threading.Event()
         self.stream = None
@@ -282,8 +283,9 @@ class MusicShow:
                 ended = self.ended
                 visual = dict(self.visual)
             self.on_progress(pos, self.analysis.duration)
-            self.on_frame(reactive_frame(self.analysis.window(pos), self.analysis.sr,
-                          visual["style"], visual["palette"], visual["brightness"], tick, visual["params"]))
+            if self.emit_frames:
+                self.on_frame(reactive_frame(self.analysis.window(pos), self.analysis.sr,
+                              visual["style"], visual["palette"], visual["brightness"], tick, visual["params"]))
             tick += 1
             if ended:
                 natural_end = True; break

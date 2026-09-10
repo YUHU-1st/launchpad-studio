@@ -24,6 +24,7 @@ from core.performance import PALETTES, PerformanceMonitor
 from core.video_engine import VideoPlayer
 from core.audio_engine import LiveAudio, MusicShow, audio_devices
 from core.miniapps import SnakeGame, WhackAMole, calendar_frame, clock_frame, scrolling_text, weather_frame
+from core.rhythm import RhythmGame, generate_chart
 from core.weather import WeatherService
 
 
@@ -138,8 +139,10 @@ class LaunchpadStudio(tk.Tk):
         self.live = None
         self.weather=WeatherService(); self.weather_data=None
         self.snake=SnakeGame(); self.mole=WhackAMole()
+        self.rhythm_game=RhythmGame(); self.rhythm_chart=None; self.rhythm_analysis=None; self.rhythm_audio=None
+        self.rhythm_chart_key=None; self.rhythm_generating=False
         self.utility_running=False; self.utility_job=None; self.utility_phase=0; self.active_utility=None
-        self.score_effect_token=0
+        self.score_effect_token=0; self.score_effect_until=0.0; self.rhythm_score_effect_until=0.0
         self.focus_deadline=None; self.focus_remaining=0; self.focus_paused=False
         self.mode = "性能监控"; self.active_mode=None
         self.running_perf = False
@@ -182,6 +185,7 @@ class LaunchpadStudio(tk.Tk):
         s.configure("TEntry", fieldbackground=PANEL2, foreground=TEXT, insertcolor=TEXT,
                     bordercolor="#30384b")
         s.configure("TScale", background=PANEL, troughcolor="#292f40")
+        s.configure("TCheckbutton",background=BG,foreground=TEXT)
 
     def _build_ui(self):
         top = tk.Frame(self, bg=BG, height=72); top.pack(fill="x", padx=24, pady=(16,8)); top.pack_propagate(False)
@@ -190,6 +194,7 @@ class LaunchpadStudio(tk.Tk):
         self.device_status = tk.Label(top, text="未连接", bg=BG, fg=MUTED, font=("Segoe UI", 9)); self.device_status.pack(side="left")
         ttk.Button(top, text="设备设置", command=self._device_dialog).pack(side="right", pady=12)
         ttk.Button(top, text="灯光测试", command=self._test_lights).pack(side="right", padx=8, pady=12)
+        ttk.Button(top,text="■ 全部停止并熄灯",command=self._stop_all_and_clear).pack(side="right",pady=12)
 
         body = tk.Frame(self, bg=BG); body.pack(fill="both", expand=True, padx=24, pady=(0,18))
         side = tk.Frame(body, bg=PANEL, width=188); side.pack(side="left", fill="y"); side.pack_propagate(False)
@@ -229,6 +234,10 @@ class LaunchpadStudio(tk.Tk):
         self.page_canvas.bind("<MouseWheel>",lambda e:self.page_canvas.yview_scroll(int(-e.delta/120),"units"))
         self.status_var=tk.StringVar(value="就绪")
         tk.Label(self.right,textvariable=self.status_var,bg=BG,fg=MUTED,font=("Segoe UI",9),anchor="w").pack(fill="x",pady=(8,0))
+        # Pack the fixed-width inspector before the expanding LED canvas so it
+        # keeps its full width at the default 1280 x 820 window size.
+        self.center.pack_forget(); self.right.pack_forget()
+        self.right.pack(side="right",fill="y"); self.center.pack(side="left",fill="both",expand=True,padx=(12,12))
 
     def _clear_page(self):
         for w in self.page.winfo_children(): w.destroy()
@@ -240,6 +249,17 @@ class LaunchpadStudio(tk.Tk):
 
     def _card(self):
         f=tk.Frame(self.page,bg=PANEL2,padx=14,pady=12); f.pack(fill="x",pady=6); return f
+
+    def _macro_control_switch(self,parent=None):
+        parent=parent or self.page
+        self.macro_control_var=tk.BooleanVar(value=self.settings_store.data.get("macro_control_enabled",False))
+        ttk.Checkbutton(parent,text="允许 Launchpad 按键同时触发已配置宏（不改变当前灯光）",
+                        variable=self.macro_control_var,command=self._macro_control_changed).pack(fill="x",pady=(0,10))
+
+    def _macro_control_changed(self):
+        enabled=bool(self.macro_control_var.get())
+        self.settings_store.data["macro_control_enabled"]=enabled; self.settings_store.save()
+        self.set_status("宏按键并行控制已开启" if enabled else "宏按键并行控制已关闭")
 
     def _show_mode(self, name):
         previous={"视频播放":"video","音乐演示":"music","实时拾音":"live"}.get(getattr(self,"mode",None))
@@ -258,6 +278,7 @@ class LaunchpadStudio(tk.Tk):
 
     def _page_performance(self):
         self._page_title("性能监控","负载映射到 8×8 灯柱；右侧圆键显示当前最高硬件温度。")
+        self._macro_control_switch()
         self.metric_labels={}
         metric_box=tk.Frame(self.page,bg=PANEL2,padx=10,pady=8); metric_box.pack(fill="x",pady=5)
         for key in ["CPU","RAM","GPU","磁盘","网络 MB/s","磁盘 MB/s"]:
@@ -313,14 +334,16 @@ class LaunchpadStudio(tk.Tk):
         c=self._card(); self.pad_name=tk.Label(c,text="当前按键：81",bg=PANEL2,fg=TEXT,font=("Segoe UI Semibold",12)); self.pad_name.pack(anchor="w")
         tk.Label(self.page,text="操作类型",bg=BG,fg=MUTED).pack(anchor="w",pady=(12,4))
         self.action_var=tk.StringVar(value="热键")
-        ttk.Combobox(self.page,textvariable=self.action_var,state="readonly",values=["热键","输入文字","打开文件/程序","打开网址","执行命令","媒体控制","按键序列"]).pack(fill="x")
+        ttk.Combobox(self.page,textvariable=self.action_var,state="readonly",values=["热键","输入文字","打开文件/程序","打开网址","执行命令","PowerShell","媒体控制","按键序列","鼠标操作","系统操作","设置音量","组合动作"]).pack(fill="x")
         tk.Label(self.page,text="内容",bg=BG,fg=MUTED).pack(anchor="w",pady=(12,4))
         self.macro_value=tk.StringVar(); ttk.Entry(self.page,textvariable=self.macro_value).pack(fill="x")
-        tk.Label(self.page,text="示例：CTRL+SHIFT+S；PLAY；C:\\Windows\\notepad.exe",bg=BG,fg="#5f687c",font=("Segoe UI",8),wraplength=310,justify="left").pack(anchor="w",pady=4)
+        tk.Label(self.page,text="示例：CTRL+SHIFT+S；PLAY；左键/右键/双击；锁定电脑/截图/任务管理器；音量 0–100。组合动作每行使用 hotkey:、text:、wait:、open:、url:、mouse:。",bg=BG,fg="#5f687c",font=("Segoe UI",8),wraplength=310,justify="left").pack(anchor="w",pady=4)
         self.macro_color="#7c5cff"
         ttk.Button(self.page,text="选择此按键颜色",command=self._pick_macro_color).pack(fill="x",pady=(12,6))
         ttk.Button(self.page,text="保存按键",style="Accent.TButton",command=self._save_macro).pack(fill="x",pady=6)
-        ttk.Button(self.page,text="测试执行",command=self._test_macro).pack(fill="x")
+        macro_row=tk.Frame(self.page,bg=BG); macro_row.pack(fill="x")
+        ttk.Button(macro_row,text="测试执行",command=self._test_macro).pack(side="left",expand=True,fill="x")
+        ttk.Button(macro_row,text="清除当前按键",command=self._clear_macro).pack(side="left",expand=True,fill="x",padx=(5,0))
         ttk.Button(self.page,text="启用宏按键灯光",command=self._start_macros).pack(fill="x",pady=(12,0))
         self._load_macro_form(*self.selected_pad)
 
@@ -351,6 +374,15 @@ class LaunchpadStudio(tk.Tk):
         macro=self._macro_get(*self.selected_pad)
         if macro: self.macro_exec.execute(macro)
 
+    def _clear_macro(self):
+        key=self._macro_key(*self.selected_pad)
+        if not messagebox.askyesno("清除宏按键",f"确定清除按键 {key} 的功能和独立颜色吗？",parent=self):return
+        macros=self.settings_store.data["macros"]; macros.pop(key,None)
+        macros.pop(str(self.lp.pad_id(*self.selected_pad)),None)
+        self.settings_store.save(); self.action_var.set("热键"); self.macro_value.set(""); self.macro_color="#7c5cff"
+        if self.active_mode=="宏按键":self._render_macro_profile()
+        self.set_status(f"按键 {key} 已清除")
+
     def _start_macros(self):
         self._activate_mode("宏按键"); self._render_macro_profile(); self.set_status("宏按键模式运行中")
 
@@ -364,6 +396,7 @@ class LaunchpadStudio(tk.Tk):
 
     def _page_video(self):
         self._page_title("视频像素播放器","播放列表、拖动定位、变速、循环与实时像素滤镜。")
+        self._macro_control_switch()
         saved=self.settings_store.data["detail_params"]["video"]
         self.video_list=tk.Listbox(self.page,height=4,bg=PANEL2,fg=TEXT,selectbackground=ACCENT,
                                    relief="flat",highlightthickness=0,font=("Segoe UI",9))
@@ -453,6 +486,7 @@ class LaunchpadStudio(tk.Tk):
 
     def _page_music(self):
         self._page_title("音乐灯光播放器","音频播放、变速与灯光采样使用同一时间轴，拖动后保持同步。")
+        self._macro_control_switch()
         saved=self.settings_store.data["detail_params"]["music"]
         self.audio_list=tk.Listbox(self.page,height=4,bg=PANEL2,fg=TEXT,selectbackground=ACCENT,relief="flat",highlightthickness=0,font=("Segoe UI",9)); self.audio_list.pack(fill="x"); self.audio_list.bind("<Double-Button-1>",lambda _e:self._start_music())
         for p in self.audio_playlist:self.audio_list.insert("end",Path(p).name)
@@ -719,6 +753,7 @@ class LaunchpadStudio(tk.Tk):
 
     def _page_live(self):
         self._page_title("实时拾音","从麦克风或系统回放设备低延迟生成灯光。系统声音请选择“立体声混音 / Stereo Mix / Loopback”。")
+        self._macro_control_switch()
         saved=self.settings_store.data["detail_params"]["live"]
         tk.Label(self.page,text="音频输入",bg=BG,fg=MUTED).pack(anchor="w",pady=(4,4))
         self.live_devices=audio_devices(); self.live_device=tk.StringVar()
@@ -756,7 +791,7 @@ class LaunchpadStudio(tk.Tk):
         self._page_title("工具与解压游戏","让 Launchpad 在桌面常驻时也有用：时间、天气、专注提醒和可直接按键游玩的小游戏。")
         cfg=self.settings_store.data["utilities"]
         tk.Label(self.page,text="选择功能",bg=BG,fg=MUTED).pack(anchor="w",pady=(2,4))
-        choices=["数字时钟","日历","天气","专注计时器","贪吃蛇","打地鼠"]
+        choices=["数字时钟","日历","天气","专注计时器","贪吃蛇","打地鼠","瀑布音游","环形音游"]
         self.utility_choice=tk.StringVar(value=cfg.get("selected","数字时钟"))
         combo=ttk.Combobox(self.page,textvariable=self.utility_choice,state="readonly",values=choices); combo.pack(fill="x")
         combo.bind("<<ComboboxSelected>>",lambda _e:self._utility_selection_changed())
@@ -770,6 +805,7 @@ class LaunchpadStudio(tk.Tk):
     def _build_utility_options(self):
         for widget in self.utility_options.winfo_children():widget.destroy()
         choice=self.utility_choice.get(); cfg=self.settings_store.data["utilities"]
+        if choice not in ("贪吃蛇","打地鼠","瀑布音游","环形音游"):self._macro_control_switch(self.utility_options)
         if choice in ("数字时钟","日历"):
             text="滚动显示当前 24 小时时间，并用顶排显示秒钟位置。" if choice=="数字时钟" else "滚动显示月-日，顶排亮点表示星期进度。"
             tk.Label(self.utility_options,text=text,bg=BG,fg=MUTED,wraplength=300,justify="left").pack(anchor="w",pady=5)
@@ -786,6 +822,31 @@ class LaunchpadStudio(tk.Tk):
             buttons=tk.Frame(self.utility_options,bg=BG); buttons.pack(fill="x")
             ttk.Button(buttons,text="暂停/继续",command=self._pause_focus).pack(side="left",expand=True,fill="x")
             ttk.Button(buttons,text="重置",command=self._reset_focus).pack(side="left",expand=True,fill="x",padx=(5,0))
+        elif choice in ("瀑布音游","环形音游"):
+            explanation=("音符从顶部落向底部琴键，到达亮线时按对应底排键。" if choice=="瀑布音游" else
+                         "音符从中心向外圈移动，到达外圈目标时按对应键，玩法灵感来自环形街机音游。")
+            tk.Label(self.utility_options,text=explanation,bg=BG,fg=MUTED,wraplength=300,justify="left").pack(anchor="w",pady=5)
+            path=cfg.get("rhythm_path",""); self.rhythm_file_label=tk.Label(self.utility_options,text=Path(path).name if path else "尚未导入音乐",
+                bg=PANEL2,fg=TEXT,font=("Segoe UI",9),padx=10,pady=8,anchor="w"); self.rhythm_file_label.pack(fill="x",pady=4)
+            ttk.Button(self.utility_options,text="导入音乐并自动生成谱面",command=self._choose_rhythm_audio).pack(fill="x",pady=(2,8))
+            params=tk.Frame(self.utility_options,bg=BG); params.pack(fill="x")
+            self.rhythm_difficulty=tk.StringVar(value=cfg.get("rhythm_difficulty","普通"))
+            self.rhythm_speed=tk.IntVar(value=cfg.get("rhythm_speed",3)); self.rhythm_lanes=tk.IntVar(value=cfg.get("rhythm_lanes",6))
+            for column,(label,var,values) in enumerate((("难度",self.rhythm_difficulty,("简单","普通","困难")),
+                                                       ("下落速度",self.rhythm_speed,(1,2,3,4,5)),
+                                                       ("琴键数量",self.rhythm_lanes,(4,5,6,7,8)))):
+                box=tk.Frame(params,bg=BG); box.grid(row=0,column=column,sticky="ew",padx=(0 if column==0 else 3,0))
+                tk.Label(box,text=label,bg=BG,fg=MUTED,font=("Segoe UI",8)).pack(anchor="w")
+                combo=ttk.Combobox(box,textvariable=var,state="readonly",values=values,width=7); combo.pack(fill="x")
+                combo.bind("<<ComboboxSelected>>",lambda _e,regen=label!="下落速度":self._rhythm_parameters_changed(regen))
+                params.grid_columnconfigure(column,weight=1)
+            self.utility_info=tk.Label(self.utility_options,text="导入音乐后将自动分析节拍并生成谱面",bg=PANEL2,fg=TEXT,font=("Segoe UI Semibold",11),padx=10,pady=10,wraplength=280,justify="left")
+            self.utility_info.pack(fill="x",pady=8)
+            controls=tk.Frame(self.utility_options,bg=BG); controls.pack(fill="x")
+            ttk.Button(controls,text="重新生成谱面",command=self._regenerate_rhythm_chart).pack(side="left",expand=True,fill="x")
+            self.rhythm_pause_btn=ttk.Button(controls,text="暂停 / 继续",command=self._pause_rhythm)
+            self.rhythm_pause_btn.pack(side="left",expand=True,fill="x",padx=(5,0))
+            if path and self.rhythm_chart_key!=self._rhythm_key():self.after(50,self._regenerate_rhythm_chart)
         else:
             instructions="键盘方向键控制；Launchpad 顶排前四键按实机图标依次为 ↑、↓、←、→。到达边缘会从另一侧出现。" if choice=="贪吃蛇" else "在亮起的方块熄灭前按下它。命中后会重新获得完整反应时间。"
             tk.Label(self.utility_options,text=instructions,bg=BG,fg=MUTED,wraplength=300,justify="left").pack(anchor="w",pady=5)
@@ -798,6 +859,51 @@ class LaunchpadStudio(tk.Tk):
             self.utility_info=tk.Label(self.utility_options,text="得分 0",bg=PANEL2,fg=TEXT,font=("Segoe UI Semibold",16),padx=12,pady=10); self.utility_info.pack(fill="x",pady=6)
         ttk.Button(self.utility_options,text="开始 / 重新开始",style="Accent.TButton",command=self._start_utility).pack(fill="x",pady=(10,5))
         ttk.Button(self.utility_options,text="停止并熄灯",command=lambda:self._stop_utility(True)).pack(fill="x")
+
+    def _rhythm_key(self):
+        cfg=self.settings_store.data["utilities"]
+        path=cfg.get("rhythm_path",""); style=self.utility_choice.get() if hasattr(self,"utility_choice") else "瀑布音游"
+        difficulty=self.rhythm_difficulty.get() if hasattr(self,"rhythm_difficulty") else cfg.get("rhythm_difficulty","普通")
+        lanes=int(self.rhythm_lanes.get()) if hasattr(self,"rhythm_lanes") else int(cfg.get("rhythm_lanes",6))
+        return path,style,difficulty,lanes
+
+    def _choose_rhythm_audio(self):
+        paths=self._pick_files("导入音游音乐","音频文件|*.wav;*.mp3;*.ogg;*.flac;*.aiff|所有文件|*.*")
+        if not paths:return
+        self.settings_store.data["utilities"]["rhythm_path"]=paths[0]; self.settings_store.save()
+        self.rhythm_file_label.configure(text=Path(paths[0]).name); self._regenerate_rhythm_chart()
+
+    def _rhythm_parameters_changed(self,regenerate=True):
+        cfg=self.settings_store.data["utilities"]
+        cfg["rhythm_difficulty"]=self.rhythm_difficulty.get(); cfg["rhythm_speed"]=int(self.rhythm_speed.get()); cfg["rhythm_lanes"]=int(self.rhythm_lanes.get())
+        self.settings_store.save()
+        if regenerate:self._regenerate_rhythm_chart()
+        else:self.set_status("音符下落速度已保存；下次开始时生效")
+
+    def _regenerate_rhythm_chart(self):
+        if self.rhythm_generating:return
+        key=self._rhythm_key(); path=key[0]
+        if not path or not Path(path).exists():return self._set_utility_info("请先导入可读取的音乐文件",key[1])
+        self.rhythm_generating=True; self.rhythm_chart=None; self.rhythm_chart_key=None
+        self._set_utility_info("正在识别节拍、瞬态和频段并生成谱面…",key[1]); self.set_status("正在生成音游谱面")
+        def work():
+            try:
+                chart,analysis=generate_chart(*key); self._queue_ui(("rhythm_chart",key,chart,analysis))
+            except Exception as exc:self._queue_ui(("rhythm_error",key,str(exc)))
+        threading.Thread(target=work,daemon=True,name="RhythmChartGenerator").start()
+
+    def _rhythm_chart_ready(self,key,chart,analysis):
+        self.rhythm_generating=False
+        self.rhythm_chart_key=key; self.rhythm_chart=chart; self.rhythm_analysis=analysis
+        if self.mode=="工具与游戏" and self.utility_choice.get() in ("瀑布音游","环形音游"):
+            if key!=self._rhythm_key():return self._regenerate_rhythm_chart()
+            self._set_utility_info(f"谱面已生成 · BPM {chart.bpm} · {len(chart.notes)} 个音符 · {chart.lanes} 键\n点击开始进入游戏",chart.style)
+            self.set_status("音游谱面生成完成")
+
+    def _rhythm_chart_failed(self,key,error):
+        self.rhythm_generating=False
+        if self.mode=="工具与游戏" and self.utility_choice.get()==key[1]:self._set_utility_info(f"谱面生成失败：{error}",key[1])
+        self.set_status(f"谱面生成失败：{error}")
 
     def _utility_colors(self):
         low,high=PALETTES.get(self.palette_var.get(),PALETTES["霓虹"])
@@ -841,7 +947,7 @@ class LaunchpadStudio(tk.Tk):
             except tk.TclError:pass
 
     def _play_score_effect(self,base_frame,score):
-        self.score_effect_token+=1; token=self.score_effect_token
+        self.score_effect_token+=1; token=self.score_effect_token; self.score_effect_until=time.monotonic()+.225
         low,high=self._utility_colors()
         for phase,delay in enumerate((0,75,150)):
             frame=dict(base_frame)
@@ -857,8 +963,17 @@ class LaunchpadStudio(tk.Tk):
         if token==self.score_effect_token and self.utility_running and self.active_mode=="工具与游戏":
             self.apply_frame(frame)
 
+    def _rhythm_score_overlay(self,frame):
+        if time.monotonic()>=self.rhythm_score_effect_until:return frame
+        result=dict(frame); low,high=self._utility_colors(); phase=int(time.monotonic()*24)
+        for x in range(8):result[(x,0)]=high if (x+phase)%2 else low
+        for y in range(1,9):result[(8,y)]=high if (y+phase)%2 else low
+        return result
+
     def _start_utility(self):
         choice=self.utility_choice.get(); cfg=self.settings_store.data["utilities"]
+        if choice in ("瀑布音游","环形音游") and (not self.rhythm_chart or self.rhythm_chart_key!=self._rhythm_key()):
+            self._set_utility_info("谱面尚未生成完成，请稍候或点击重新生成谱面",choice); return
         self._activate_mode("工具与游戏"); self._stop_utility(clear=False)
         self.active_mode="工具与游戏"; self.active_utility=choice; self.utility_running=True; self.utility_phase=0
         if choice=="天气":
@@ -873,6 +988,15 @@ class LaunchpadStudio(tk.Tk):
         elif choice=="打地鼠":
             difficulty=self.game_difficulty.get(); cfg["mole_difficulty"]=difficulty
             self.mole.reset({"简单":8,"普通":5,"困难":3}.get(difficulty,8)); self.mole_first_tick=True; self.settings_store.save()
+        elif choice in ("瀑布音游","环形音游"):
+            difficulty=self.rhythm_difficulty.get(); speed=int(self.rhythm_speed.get()); lanes=int(self.rhythm_lanes.get())
+            cfg.update(rhythm_difficulty=difficulty,rhythm_speed=speed,rhythm_lanes=lanes); self.settings_store.save()
+            self.rhythm_game.reset(self.rhythm_chart,speed,difficulty)
+            if not self.rhythm_audio:
+                self.rhythm_audio=MusicShow(lambda _frame:None,lambda _status:None,lambda _p,_d:None,
+                                            lambda:self._queue_ui(("rhythm_finished",)),emit_frames=False)
+            self.rhythm_audio.analysis=self.rhythm_analysis; self.rhythm_audio.path=self.rhythm_chart.path
+            self.rhythm_audio.start(self.rhythm_chart.path,"频谱",self.palette_var.get(),0,{})
         self.set_status(f"{choice}运行中"); self._utility_tick()
 
     def _weather_worker(self,city):
@@ -912,17 +1036,22 @@ class LaunchpadStudio(tk.Tk):
             self.snake_first_tick=False; frame=self.snake.frame(); high_score=self._update_game_scoreboard(choice); delay=self._game_delay(choice)
             if not alive:
                 self.settings_store.data["utilities"]["snake_high_score"]=high_score; self.settings_store.save(); self.utility_running=False; self.set_status("贪吃蛇游戏结束")
-        else:
+        elif choice=="打地鼠":
             if not getattr(self,"mole_first_tick",False):self.mole.timeout()
             self.mole_first_tick=False; frame=self.mole.frame(); high_score=self._update_game_scoreboard(choice); delay=self._game_delay(choice)
             if not self.mole.running:
                 self.settings_store.data["utilities"]["mole_high_score"]=high_score; self.settings_store.save(); self.utility_running=False; self.set_status("打地鼠游戏结束")
-        self.apply_frame(frame); self.utility_phase+=1
+        else:
+            position=self._rhythm_position(); self.rhythm_game.update(position)
+            frame=self._rhythm_score_overlay(self.rhythm_game.frame(position,low,high)); self._update_rhythm_scoreboard(choice); delay=33
+            if not self.rhythm_game.running:self._finish_rhythm_game(choice,frame)
+        if time.monotonic()>=self.score_effect_until:self.apply_frame(frame)
+        self.utility_phase+=1
         if scored:self._play_score_effect(frame,self.snake.score); delay=max(delay,260)
         if self.utility_running:self.utility_job=self.after(delay,self._utility_tick)
 
     def _pause_focus(self):
-        if self.utility_choice.get()!="专注计时器" or not self.utility_running:return
+        if self.active_utility!="专注计时器" or not self.utility_running:return
         if self.focus_paused:
             self.focus_deadline=time.monotonic()+self.focus_remaining; self.focus_paused=False; self.set_status("专注计时继续")
         else:
@@ -933,6 +1062,36 @@ class LaunchpadStudio(tk.Tk):
         self.focus_remaining=max(1,int(self.focus_minutes.get()))*60
         if hasattr(self,"utility_info"):self.utility_info.configure(text=f"{self.focus_remaining//60:02d}:00")
 
+    def _rhythm_position(self):
+        if not self.rhythm_audio or not self.rhythm_audio.analysis:return 0.0
+        with self.rhythm_audio.lock:return self.rhythm_audio.cursor/self.rhythm_audio.analysis.sr
+
+    def _update_rhythm_scoreboard(self,choice):
+        key="waterfall_high_score" if choice=="瀑布音游" else "maimai_high_score"
+        high=max(self.settings_store.data["utilities"].get(key,0),self.rhythm_game.score)
+        total=max(1,self.rhythm_game.hits+self.rhythm_game.misses); accuracy=self.rhythm_game.hits/total*100
+        self._set_utility_info(f"得分 {self.rhythm_game.score} · 连击 {self.rhythm_game.combo}（最高 {self.rhythm_game.max_combo}）\n"
+                               f"命中 {self.rhythm_game.hits} · 失误 {self.rhythm_game.misses} · 准确率 {accuracy:.1f}% · 最高分 {high}",choice)
+        return key,high
+
+    def _pause_rhythm(self):
+        if self.active_utility not in ("瀑布音游","环形音游") or not self.utility_running or not self.rhythm_audio:return
+        paused=self.rhythm_audio.pause_toggle(); self.set_status("音游已暂停" if paused else "音游继续")
+        if hasattr(self,"rhythm_pause_btn"):
+            try:self.rhythm_pause_btn.configure(text="继续" if paused else "暂停")
+            except tk.TclError:pass
+
+    def _finish_rhythm_game(self,choice=None,frame=None):
+        choice=choice or self.active_utility
+        if choice not in ("瀑布音游","环形音游"):return
+        self.rhythm_game.running=False; key,high=self._update_rhythm_scoreboard(choice)
+        self.settings_store.data["utilities"][key]=high; self.settings_store.save(); self.utility_running=False
+        if frame is None:
+            low,high_color=self._utility_colors(); frame=self.rhythm_game.frame(self._rhythm_position(),low,high_color)
+        self.apply_frame(frame)
+        if self.rhythm_audio:self.rhythm_audio.stop()
+        self.set_status(f"{choice}结束 · 得分 {self.rhythm_game.score}")
+
     def _stop_utility(self,clear=False):
         was_active=self.active_mode=="工具与游戏"
         self.utility_running=False
@@ -940,6 +1099,7 @@ class LaunchpadStudio(tk.Tk):
             try:self.after_cancel(self.utility_job)
             except Exception:pass
             self.utility_job=None
+        if self.rhythm_audio:self.rhythm_audio.stop()
         self.active_utility=None; self.score_effect_token+=1
         if was_active:
             self.active_mode=None
@@ -976,6 +1136,12 @@ class LaunchpadStudio(tk.Tk):
                     try:self.after_cancel(self.utility_job)
                     except Exception:pass
                 self.utility_job=self.after(self._game_delay(choice),self._utility_tick)
+        elif choice in ("瀑布音游","环形音游"):
+            result=self.rhythm_game.hit((x,y),self._rhythm_position())
+            low,high=self._utility_colors(); frame=self.rhythm_game.frame(self._rhythm_position(),low,high)
+            if result and result!="miss":self.rhythm_score_effect_until=time.monotonic()+.25
+            self.apply_frame(self._rhythm_score_overlay(frame)); self._update_rhythm_scoreboard(choice)
+            self.set_status({"perfect":"PERFECT！","great":"GREAT！","good":"GOOD！","miss":"MISS"}.get(result,"请按亮起的目标琴键"))
 
     def _canvas_pad(self,x,y):
         if self.mode=="宏按键":self._load_macro_form(x,y)
@@ -987,10 +1153,12 @@ class LaunchpadStudio(tk.Tk):
     def _handle_pad_ui(self,x,y,pressed):
         if not pressed:return
         self.pad_canvas.selected=(x,y); self.pad_canvas.draw()
-        if self.active_mode=="宏按键":
+        games=("贪吃蛇","打地鼠","瀑布音游","环形音游")
+        if self.active_mode=="工具与游戏" and self.active_utility in games:
+            self._utility_pad(x,y)
+        elif self.active_mode=="宏按键" or self.settings_store.data.get("macro_control_enabled",False):
             macro=self._macro_get(x,y)
             if macro:self.macro_exec.execute(macro); self.set_status(f"已执行按键 {self.lp.pad_label(x,y)} · {macro['action']}")
-        elif self.active_mode=="工具与游戏":self._utility_pad(x,y)
 
     def _palette_changed(self,_e=None):
         self.settings_store.data["theme"]=self.palette_var.get(); self.settings_store.save()
@@ -1112,6 +1280,9 @@ class LaunchpadStudio(tk.Tk):
                 elif kind=="audio_finished" and self.active_mode=="音乐演示":self._advance_audio(1,True)
                 elif kind=="weather_result":latest_weather=event[1]
                 elif kind=="weather_error":weather_error=event[1]
+                elif kind=="rhythm_chart":self._rhythm_chart_ready(*event[1:])
+                elif kind=="rhythm_error":self._rhythm_chart_failed(*event[1:])
+                elif kind=="rhythm_finished" and self.active_mode=="工具与游戏":self._finish_rhythm_game()
                 elif kind=="show_window":self._show_window()
                 elif kind=="quit_app":self._close()
         except queue.Empty:pass
@@ -1145,6 +1316,9 @@ class LaunchpadStudio(tk.Tk):
         self._stop_utility(clear=False)
         self.active_mode=None; self.score_effect_token+=1
         self.set_status("已停止")
+
+    def _stop_all_and_clear(self):
+        self._stop_all(); self.apply_frame({xy:(0,0,0) for xy in ALL_PADS}); self.set_status("所有灯光功能已结束，Launchpad 已熄灯")
 
     def _tray_image(self):
         image=Image.new("RGBA",(64,64),(11,13,18,255)); draw=ImageDraw.Draw(image)

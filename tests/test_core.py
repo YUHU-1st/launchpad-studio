@@ -3,9 +3,13 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
 
 from core.launchpad import MODELS, LaunchpadDevice, detect_model
 from core.miniapps import SnakeGame, WhackAMole, calendar_frame, clock_frame, weather_frame
+from core.rhythm import RhythmGame, chart_from_analysis
 from core.settings import Settings
 
 
@@ -73,6 +77,17 @@ class MiniAppTests(unittest.TestCase):
     def test_top_control_labels_match_launchpad_icons(self):
         device=LaunchpadDevice()
         self.assertEqual([device.pad_label(x,0) for x in range(4)],["↑","↓","←","→"])
+
+    def test_rhythm_chart_and_both_layouts(self):
+        sr=8000; t=np.arange(sr*5)/sr; samples=(np.sin(2*np.pi*220*t)*.04).astype(np.float32)
+        for second in range(1,5):samples[second*sr:second*sr+300]+=.8*np.hanning(300).astype(np.float32)
+        analysis=SimpleNamespace(data=samples,sr=sr,duration=5.0,bpm=120)
+        for style in ("瀑布音游","环形音游"):
+            chart=chart_from_analysis(analysis,"test.wav",style,"普通",6)
+            self.assertGreater(len(chart.notes),3)
+            game=RhythmGame(); game.reset(chart,3,"普通")
+            note=chart.notes[0]; result=game.hit(game.targets()[note.lane],note.time)
+            self.assertEqual(result,"perfect"); self.assertEqual(len(game.frame(note.time)),80)
 
 
 if __name__=="__main__":unittest.main()

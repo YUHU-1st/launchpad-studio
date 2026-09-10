@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 - 2026-09-10
+
+- Added independent clearing of a selected macro pad and expanded macro actions with PowerShell, mouse, system, volume and multi-step workflows.
+- Added persistent parallel macro control to every non-game mode without changing the active lighting frame.
+- Added auto-chart Waterfall and radial arcade-style rhythm games with beat/transient/frequency analysis, three difficulties, 1–5 note speed, 4–8 lanes, pause, timing grades, combo, accuracy and high scores.
+- Added a global Stop All and Black Out action in the application header.
+- Fixed the right-side inspector width at the default window size.
+- Replaced the README with complete Chinese and English documentation, real UI screenshots, an animated demo and an MP4 demo.
+
 ## 1.2.0 - 2026-09-10
 
 - Added a non-blocking, palette-aware score celebration effect to both games.

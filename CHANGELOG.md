@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 - 2026-09-10
+
+- Added Easy, Normal and Hard difficulty settings plus automatic game levels.
+- Changed Snake to wrap across all four edges and corrected its top-row controls to match the physical `↑ ↓ ← →` icons.
+- Slowed Whack-a-Mole, added difficulty-based reaction windows and chances, and reset the timer after each successful hit.
+- Added live score, level, high-score and remaining-chances updates to the game panel.
+
 ## 1.0.0 - 2026-09-10
 
 - Added model-aware support for the Launchpad family, including 80- and 96-control layouts.

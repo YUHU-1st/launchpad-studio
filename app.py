@@ -778,8 +778,14 @@ class LaunchpadStudio(tk.Tk):
             ttk.Button(buttons,text="暂停/继续",command=self._pause_focus).pack(side="left",expand=True,fill="x")
             ttk.Button(buttons,text="重置",command=self._reset_focus).pack(side="left",expand=True,fill="x",padx=(5,0))
         else:
-            instructions="方向键控制；Launchpad 顶排前四键依次为左、上、下、右。" if choice=="贪吃蛇" else "在亮起的方块熄灭前按下它，点错或超时五次结束。"
+            instructions="键盘方向键控制；Launchpad 顶排前四键按实机图标依次为 ↑、↓、←、→。到达边缘会从另一侧出现。" if choice=="贪吃蛇" else "在亮起的方块熄灭前按下它。命中后会重新获得完整反应时间。"
             tk.Label(self.utility_options,text=instructions,bg=BG,fg=MUTED,wraplength=300,justify="left").pack(anchor="w",pady=5)
+            game_key="snake" if choice=="贪吃蛇" else "mole"
+            difficulty_row=tk.Frame(self.utility_options,bg=BG); difficulty_row.pack(fill="x",pady=(3,5))
+            tk.Label(difficulty_row,text="难度",bg=BG,fg=MUTED).pack(side="left")
+            self.game_difficulty=tk.StringVar(value=cfg.get(f"{game_key}_difficulty","简单"))
+            difficulty=ttk.Combobox(difficulty_row,textvariable=self.game_difficulty,state="readonly",values=("简单","普通","困难"),width=9)
+            difficulty.pack(side="right"); difficulty.bind("<<ComboboxSelected>>",lambda _e:self._game_difficulty_changed())
             self.utility_info=tk.Label(self.utility_options,text="得分 0",bg=PANEL2,fg=TEXT,font=("Segoe UI Semibold",16),padx=12,pady=10); self.utility_info.pack(fill="x",pady=6)
         ttk.Button(self.utility_options,text="开始 / 重新开始",style="Accent.TButton",command=self._start_utility).pack(fill="x",pady=(10,5))
         ttk.Button(self.utility_options,text="停止并熄灯",command=lambda:self._stop_utility(True)).pack(fill="x")
@@ -788,6 +794,34 @@ class LaunchpadStudio(tk.Tk):
         low,high=PALETTES.get(self.palette_var.get(),PALETTES["霓虹"])
         amount=self.brightness.get()/100
         return tuple(round(v*amount) for v in low),tuple(round(v*amount) for v in high)
+
+    def _game_difficulty_changed(self):
+        choice=self.utility_choice.get()
+        if choice not in ("贪吃蛇","打地鼠"):return
+        key="snake_difficulty" if choice=="贪吃蛇" else "mole_difficulty"
+        self.settings_store.data["utilities"][key]=self.game_difficulty.get(); self.settings_store.save()
+        if self.utility_running:self._start_utility()
+
+    def _game_delay(self,choice):
+        difficulty=self.game_difficulty.get() if hasattr(self,"game_difficulty") else "简单"
+        if choice=="贪吃蛇":
+            base={"简单":520,"普通":340,"困难":230}.get(difficulty,520)
+            floor={"简单":220,"普通":140,"困难":95}.get(difficulty,220)
+            return max(floor,base-(self.snake.level-1)*28)
+        base={"简单":1600,"普通":1100,"困难":750}.get(difficulty,1600)
+        floor={"简单":720,"普通":480,"困难":320}.get(difficulty,720)
+        return max(floor,base-(self.mole.level-1)*80)
+
+    def _update_game_scoreboard(self,choice):
+        cfg=self.settings_store.data["utilities"]
+        if choice=="贪吃蛇":
+            high=max(cfg.get("snake_high_score",0),self.snake.score)
+            self.utility_info.configure(text=f"得分 {self.snake.score} · 第 {self.snake.level} 关\n最高 {high}")
+            return high
+        high=max(cfg.get("mole_high_score",0),self.mole.score)
+        remaining=max(0,self.mole.max_misses-self.mole.misses)
+        self.utility_info.configure(text=f"得分 {self.mole.score} · 第 {self.mole.level} 关\n剩余机会 {remaining}/{self.mole.max_misses} · 最高 {high}")
+        return high
 
     def _start_utility(self):
         self._stop_utility(clear=False); choice=self.utility_choice.get(); cfg=self.settings_store.data["utilities"]
@@ -799,8 +833,11 @@ class LaunchpadStudio(tk.Tk):
         elif choice=="专注计时器":
             minutes=max(1,min(180,int(self.focus_minutes.get()))); cfg["focus_minutes"]=minutes; self.settings_store.save()
             self.focus_remaining=minutes*60; self.focus_deadline=time.monotonic()+self.focus_remaining; self.focus_paused=False
-        elif choice=="贪吃蛇":self.snake.reset()
-        elif choice=="打地鼠":self.mole.reset(); self.mole_first_tick=True
+        elif choice=="贪吃蛇":
+            cfg["snake_difficulty"]=self.game_difficulty.get(); self.snake.reset(); self.snake_first_tick=True; self.settings_store.save()
+        elif choice=="打地鼠":
+            difficulty=self.game_difficulty.get(); cfg["mole_difficulty"]=difficulty
+            self.mole.reset({"简单":8,"普通":5,"困难":3}.get(difficulty,8)); self.mole_first_tick=True; self.settings_store.save()
         self.set_status(f"{choice}运行中"); self._utility_tick()
 
     def _weather_worker(self,city):
@@ -834,14 +871,14 @@ class LaunchpadStudio(tk.Tk):
                 try:self.tray_icon.notify("休息一下吧，专注计时已经完成。","Launchpad Studio")
                 except Exception:pass
         elif choice=="贪吃蛇":
-            alive=self.snake.tick(); frame=self.snake.frame(); high_score=max(self.settings_store.data["utilities"].get("snake_high_score",0),self.snake.score)
-            self.utility_info.configure(text=f"得分 {self.snake.score} · 最高 {high_score}"); delay=max(110,300-self.snake.score*10)
+            alive=True
+            if not getattr(self,"snake_first_tick",False):alive=self.snake.tick()
+            self.snake_first_tick=False; frame=self.snake.frame(); high_score=self._update_game_scoreboard(choice); delay=self._game_delay(choice)
             if not alive:
                 self.settings_store.data["utilities"]["snake_high_score"]=high_score; self.settings_store.save(); self.utility_running=False; self.set_status("贪吃蛇游戏结束")
         else:
             if not getattr(self,"mole_first_tick",False):self.mole.timeout()
-            self.mole_first_tick=False; frame=self.mole.frame(); high_score=max(self.settings_store.data["utilities"].get("mole_high_score",0),self.mole.score)
-            self.utility_info.configure(text=f"得分 {self.mole.score} · 失误 {self.mole.misses}/5 · 最高 {high_score}"); delay=max(280,850-self.mole.score*22)
+            self.mole_first_tick=False; frame=self.mole.frame(); high_score=self._update_game_scoreboard(choice); delay=self._game_delay(choice)
             if not self.mole.running:
                 self.settings_store.data["utilities"]["mole_high_score"]=high_score; self.settings_store.save(); self.utility_running=False; self.set_status("打地鼠游戏结束")
         self.apply_frame(frame); self.utility_phase+=1
@@ -875,14 +912,27 @@ class LaunchpadStudio(tk.Tk):
         if not self.utility_running:return
         choice=self.utility_choice.get()
         if choice=="贪吃蛇":
-            directions={0:(-1,0),1:(0,-1),2:(0,1),3:(1,0)}
+            directions={0:(0,-1),1:(0,1),2:(-1,0),3:(1,0)}
             if y==0 and x in directions:self.snake.steer(directions[x])
             elif 0<=x<8 and 1<=y<=8:
                 hx,hy=self.snake.snake[0]; dx,dy=x-hx,y-hy
                 self.snake.steer((1 if dx>0 else -1,0) if abs(dx)>abs(dy) else (0,1 if dy>0 else -1))
         elif choice=="打地鼠" and 0<=x<8 and 1<=y<=8:
             hit=self.mole.hit((x,y)); self.set_status("命中！" if hit else "没有打中")
-            self.apply_frame(self.mole.frame())
+            high_score=self._update_game_scoreboard(choice); self.apply_frame(self.mole.frame())
+            if not self.mole.running:
+                if self.utility_job:
+                    try:self.after_cancel(self.utility_job)
+                    except Exception:pass
+                    self.utility_job=None
+                self.settings_store.data["utilities"]["mole_high_score"]=high_score; self.settings_store.save(); self.utility_running=False; self.set_status("打地鼠游戏结束")
+            elif hit:
+                # A successful hit starts a full fresh reaction window for the
+                # new target instead of inheriting the previous timer.
+                if self.utility_job:
+                    try:self.after_cancel(self.utility_job)
+                    except Exception:pass
+                self.utility_job=self.after(self._game_delay(choice),self._utility_tick)
 
     def _canvas_pad(self,x,y):
         if self.mode=="宏按键":self._load_macro_form(x,y)

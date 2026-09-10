@@ -95,14 +95,20 @@ class SnakeGame:
     def tick(self):
         if not self.alive:return False
         self.direction=self.next_direction; hx,hy=self.snake[0]
-        head=(hx+self.direction[0],hy+self.direction[1])
-        if not (0<=head[0]<8 and 1<=head[1]<=8) or head in self.snake[:-1]:
+        # The playable area is an 8 x 8 torus: leaving one edge enters from
+        # the opposite edge.  Row zero remains reserved for direction keys.
+        head=((hx+self.direction[0])%8,((hy-1+self.direction[1])%8)+1)
+        if head in self.snake[:-1]:
             self.alive=False; return False
         self.snake.insert(0,head)
         if head==self.food:
             self.score+=1; self.food=self._food()
         else:self.snake.pop()
         return True
+
+    @property
+    def level(self):
+        return self.score//5+1
 
     def frame(self):
         frame=blank()
@@ -118,7 +124,8 @@ class WhackAMole:
     def __init__(self):
         self.rng=random.Random(); self.reset()
 
-    def reset(self):
+    def reset(self,max_misses=8):
+        self.max_misses=max(1,int(max_misses))
         self.target=self._target(); self.score=0; self.misses=0; self.running=True
 
     def _target(self):return self.rng.randrange(8),self.rng.randrange(1,9)
@@ -128,19 +135,27 @@ class WhackAMole:
         if xy==self.target:
             self.score+=1; self.target=self._target(); return True
         self.misses+=1
-        if self.misses>=5:self.running=False
+        if self.misses>=self.max_misses:self.running=False
         return False
 
     def timeout(self):
         if not self.running:return
         self.misses+=1
-        if self.misses>=5:self.running=False
+        if self.misses>=self.max_misses:self.running=False
         else:self.target=self._target()
+
+    @property
+    def level(self):
+        return self.score//8+1
 
     def frame(self):
         frame=blank()
         if self.running:frame[self.target]=(255,170,30)
         else:
             for x in range(8):frame[(x,4)]=(255,40,80); frame[(x,5)]=(255,40,80)
-        for i in range(max(0,5-self.misses)):frame[(8,8-i)]=(70,255,120)
+        # The side column is only eight pads high, so it shows the remaining
+        # chances proportionally for difficulty levels with more than 8 lives.
+        remaining=max(0,self.max_misses-self.misses)
+        lights=round(remaining/self.max_misses*8) if remaining else 0
+        for i in range(lights):frame[(8,8-i)]=(70,255,120)
         return frame

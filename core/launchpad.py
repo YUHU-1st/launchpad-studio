@@ -115,6 +115,8 @@ class LaunchpadDevice:
         return self.model.address(x, y)
 
     def pad_label(self, x, y):
+        if y == 0 and 0 <= x < 4:
+            return ("↑", "↓", "←", "→")[x]
         number = self.pad_id(x, y)
         return "—" if number is None else str(number)
 

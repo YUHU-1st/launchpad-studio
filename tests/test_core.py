@@ -58,5 +58,21 @@ class MiniAppTests(unittest.TestCase):
         snake=SnakeGame(); snake.steer((0,-1)); self.assertTrue(snake.tick())
         mole=WhackAMole(); self.assertTrue(mole.hit(mole.target)); self.assertEqual(mole.score,1)
 
+    def test_snake_wraps_at_every_edge(self):
+        cases=(((7,4),(1,0),(0,4)),((0,4),(-1,0),(7,4)),((4,1),(0,-1),(4,8)),((4,8),(0,1),(4,1)))
+        for start,direction,expected in cases:
+            snake=SnakeGame(); snake.snake=[start]; snake.direction=direction; snake.next_direction=direction
+            self.assertTrue(snake.tick()); self.assertEqual(snake.snake[0],expected)
+
+    def test_mole_difficulty_controls_available_chances(self):
+        mole=WhackAMole(); mole.reset(max_misses=8)
+        for _ in range(7):mole.timeout()
+        self.assertTrue(mole.running); self.assertEqual(mole.misses,7)
+        mole.timeout(); self.assertFalse(mole.running)
+
+    def test_top_control_labels_match_launchpad_icons(self):
+        device=LaunchpadDevice()
+        self.assertEqual([device.pad_label(x,0) for x in range(4)],["↑","↓","←","→"])
+
 
 if __name__=="__main__":unittest.main()

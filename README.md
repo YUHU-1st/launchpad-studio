@@ -30,6 +30,16 @@ The overview covers performance, macros, video, music, live audio, clock/calenda
 
 仅浏览其他模式页面不会打断当前灯光、音频、游戏或性能监控。关闭主窗口后软件继续在系统托盘运行；右键托盘图标可重新打开或完全退出。顶部的“全部停止并熄灯”可以立即结束所有活动并关闭全部 LED。
 
+### Android 局域网遥控
+
+桌面端现已内置局域网遥控服务。Android 客户端可控制性能监控、宏按键、视频、音乐灯光、实时拾音、时钟/日历/天气/专注计时器和 Launchpad 设备设置；出于输入冲突考虑，贪吃蛇、打地鼠和两种音游不会暴露给手机端。
+
+1. 让 Windows 电脑与 Android 手机连接同一个局域网，启动桌面端后点击顶部 **手机遥控**。
+2. 记下窗口中的 `http://局域网IP:8765/` 和 6 位配对 PIN；首次出现 Windows 防火墙提示时只需允许专用网络访问。
+3. 安装 Release 中的 `LaunchpadStudioRemote-*.apk`，填入地址和 PIN 即可。也可以直接用手机浏览器打开该地址。
+
+手机端的 **Windows 媒体** 页面通过系统媒体会话控制网易云音乐、PotPlayer、AIMP 等兼容播放器，支持播放/暂停、上/下一曲、停止、循环、随机、实时拖动进度、系统音量、静音以及默认音频输出设备切换。播放器向 Windows 暴露的标题、歌手、专辑、封面和时间轴会持续同步；歌词会按歌曲元数据从 LRCLIB 获取并逐行同步。若播放器没有向 Windows 系统媒体接口暴露某项能力，对应控制可能不可用，但基础媒体键仍会作为播放/上下曲的后备方式。
+
 ### 主要功能
 
 - **性能与温度监控**：显示 CPU、内存、GPU、磁盘、网络和磁盘吞吐量，以及 CPU、GPU、主板和存储温度。
@@ -135,6 +145,12 @@ The overview covers performance, macros, video, music, live audio, clock/calenda
 
 双击 `LaunchpadStudio.vbs` 或 `start.bat` 可静默准备环境并启动；`安装桌面快捷方式.bat` 用于创建桌面快捷方式，`build_exe.bat` 用于生成 Windows 分发包。
 
+Android 客户端源码位于 `android/`，使用 Android SDK 35、JDK 17 和 Gradle/Android Gradle Plugin 构建：
+
+```powershell
+gradle -p android assembleDebug
+```
+
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
@@ -154,6 +170,12 @@ Download the Windows x64 package from the [latest release](https://github.com/YU
 3. Configure a page, then press its Start, Play, or Enable button to hand LED ownership to that mode.
 
 Browsing another page does not interrupt the current lighting, audio, game, or performance monitor. Closing the main window keeps the service in the notification area. Use the tray menu to reopen or exit, or press **Stop All and Black Out** in the header to end every activity and switch off all LEDs immediately.
+
+### Android LAN remote
+
+Launchpad Studio now hosts a PIN-protected LAN remote service. The Android client controls every non-game desktop feature, including performance monitoring, macros, pixel video, music shows, live audio, clock/calendar/weather/focus utilities, presets, and Launchpad device setup. Games stay local so remote input cannot interfere with gameplay.
+
+The **Windows Media** view uses Windows system media sessions for compatible players such as NetEase Cloud Music, PotPlayer, and AIMP. It supports play/pause, previous/next, stop, repeat, shuffle, live seeking, system volume/mute, and switching the default Windows audio output. Title, artist, album, cover art, and timeline data are streamed to the phone; synchronized lyrics are resolved through LRCLIB when metadata is available. Open **Phone Remote** on the desktop to see the LAN URL and six-digit pairing PIN, then enter both in the release APK or a mobile browser on the same network.
 
 ### Highlights
 
@@ -259,6 +281,12 @@ Built-in profiles cover Launchpad MK1, Launchpad S, Launchpad Mini MK1/MK2/MK3, 
 ### Development and packaging
 
 Double-click `LaunchpadStudio.vbs` or `start.bat` for silent environment setup and launch. Use `安装桌面快捷方式.bat` to create a desktop shortcut and `build_exe.bat` to create the Windows distribution.
+
+The Android wrapper lives in `android/` and builds with Android SDK 35, JDK 17, and the Gradle/Android Gradle Plugin toolchain:
+
+```powershell
+gradle -p android assembleDebug
+```
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v

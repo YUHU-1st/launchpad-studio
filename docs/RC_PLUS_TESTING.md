@@ -226,7 +226,7 @@ status: paused
 
 The RC Plus also received cover data, synchronized lyrics, Windows master volume, active/default audio output, and a list of render endpoints.
 
-However, pressing play from the RC Plus did not make NetEase leave the paused state during that test. Treat play/pause compatibility as unresolved until retested after changes.
+The final regression on 2026-09-14 confirmed that explicit play and pause both change NetEase state from the RC Plus. The Windows media worker now initializes COM in MTA mode, and failed GSMTC commands use state-aware media-key fallback.
 
 NetEase also reported no usable timeline in that specific session:
 
@@ -237,6 +237,8 @@ can_seek: false
 ```
 
 Seek must therefore be tested with an active player/session that exposes a valid timeline. Do not mark seek complete based only on frontend slider behavior.
+
+The remote now disables the progress slider whenever the active player reports `can_seek=false`. NetEase's missing timeline remains a player capability limitation, not a fabricated application value.
 
 ## Audio-output test safety
 
@@ -270,3 +272,5 @@ Before release, exercise the real RC Plus through the Android UI for:
 - output switching and restoration
 
 Do not add or test mobile game controls; those are intentionally out of scope.
+
+Final result (2026-09-14): every non-game section above passed through the RC Plus WebView, including reconnect after server restart, macro configuration, presets, live WASAPI input, weather, blackout, master volume/mute, and output switching. The original audio output, 100% volume, and unmuted state were restored; the Android crash buffer was empty, and the packaged Windows API passed valid-PIN and invalid-PIN checks.

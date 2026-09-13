@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0 - 2026-09-13
+
+- Added a PIN-protected same-LAN Android remote for every non-game desktop mode, Launchpad device setup, global lighting controls, macros and presets.
+- Added Windows system-media metadata, album art, synchronized lyrics, play/pause/previous/next, capability-aware seeking, master volume, mute and default-output switching.
+- Fixed NetEase Cloud Music play/pause by sending explicit commands and using state-aware media-key fallback when GSMTC rejects a request.
+- Fixed Windows audio commands from the media worker by initializing COM in multithreaded mode.
+- Added Android 10 compatibility for DJI RC Plus and kept WebView debugging disabled in release builds.
+- Fixed idle video/music remote buttons and disabled unavailable media controls instead of presenting a fake timeline.
+
 ## 1.3.0 - 2026-09-10
 
 - Added independent clearing of a selected macro pad and expanded macro actions with PowerShell, mouse, system, volume and multi-step workflows.

@@ -7,6 +7,7 @@ import ctypes
 import faulthandler
 import logging
 import queue
+import secrets
 import subprocess
 import sys
 import threading
@@ -26,6 +27,8 @@ from core.audio_engine import LiveAudio, MusicShow, audio_devices
 from core.miniapps import SnakeGame, WhackAMole, calendar_frame, clock_frame, scrolling_text, weather_frame
 from core.rhythm import RhythmGame, generate_chart
 from core.weather import WeatherService
+from core.remote import RemoteServer
+from core.windows_media import SystemMediaBridge
 
 
 FROZEN = bool(getattr(sys,"frozen",False))
@@ -129,6 +132,10 @@ class LaunchpadStudio(tk.Tk):
         try: self.iconbitmap(BUNDLE_ROOT / "app.ico")
         except Exception: pass
         self.settings_store = Settings(ROOT / "data" / "settings.json")
+        remote_cfg=self.settings_store.data["remote"]
+        if not remote_cfg.get("pin"):
+            remote_cfg["pin"]=f"{secrets.randbelow(1_000_000):06d}"
+            self.settings_store.save()
         initial_model=self.settings_store.data.get("launchpad_model","auto")
         self.lp = LaunchpadDevice(self._hardware_pad, initial_model if initial_model != "auto" else "mk2")
         self._param_save_job=None; self._settings_save_job=None; self._parameter_clipboard=None
@@ -146,6 +153,7 @@ class LaunchpadStudio(tk.Tk):
         self.focus_deadline=None; self.focus_remaining=0; self.focus_paused=False
         self.mode = "性能监控"; self.active_mode=None
         self.running_perf = False
+        self.last_perf_stats = {}
         self.video_path = ""
         self.audio_path = ""
         self.video_playlist = [p for p in self.settings_store.data.get("video_playlist",[]) if Path(p).exists()]
@@ -162,10 +170,14 @@ class LaunchpadStudio(tk.Tk):
         h=self.custom_color.lstrip("#"); rgb=tuple(int(h[i:i+2],16) for i in (0,2,4))
         PALETTES["自定义"]=(tuple(int(v*.18) for v in rgb),rgb)
         self._build_style(); self._build_ui(); self._refresh_midi(); self._show_mode("性能监控")
+        self.system_media=SystemMediaBridge(); self.system_media.start()
+        self.remote_server=None; self.remote_tick_job=None
+        if self.settings_store.data["remote"].get("enabled",True):self._restart_remote_server()
         self.bind("<KeyPress>",self._utility_key)
         self._start_tray()
         self.after(16,self._drain_ui_events)
         self.after(3000,self._midi_watchdog)
+        self.after(250,self._remote_tick)
         self.protocol("WM_DELETE_WINDOW", self._hide_to_tray)
 
     def _build_style(self):
@@ -193,6 +205,7 @@ class LaunchpadStudio(tk.Tk):
         self.status_dot = tk.Label(top, text="●", bg=BG, fg=BAD, font=("Segoe UI", 13)); self.status_dot.pack(side="left", padx=(18,5))
         self.device_status = tk.Label(top, text="未连接", bg=BG, fg=MUTED, font=("Segoe UI", 9)); self.device_status.pack(side="left")
         ttk.Button(top, text="设备设置", command=self._device_dialog).pack(side="right", pady=12)
+        ttk.Button(top, text="手机遥控", command=self._remote_dialog).pack(side="right", padx=8, pady=12)
         ttk.Button(top, text="灯光测试", command=self._test_lights).pack(side="right", padx=8, pady=12)
         ttk.Button(top,text="■ 全部停止并熄灯",command=self._stop_all_and_clear).pack(side="right",pady=12)
 
@@ -250,6 +263,255 @@ class LaunchpadStudio(tk.Tk):
     def _card(self):
         f=tk.Frame(self.page,bg=PANEL2,padx=14,pady=12); f.pack(fill="x",pady=6); return f
 
+    def _restart_remote_server(self):
+        if self.remote_server:
+            self.remote_server.stop(); self.remote_server=None
+        cfg=self.settings_store.data["remote"]
+        if not cfg.get("enabled",True):return
+        try:
+            self.remote_server=RemoteServer(BUNDLE_ROOT / "remote",cfg["pin"],int(cfg.get("port",8765)),
+                                            self._remote_command_from_server,self.system_media)
+            self.remote_server.start()
+            if self.remote_server.error:
+                self.set_status(f"手机遥控服务启动失败：{self.remote_server.error}")
+            else:self.set_status(f"手机遥控已开启 · 端口 {cfg.get('port',8765)}")
+        except Exception as exc:
+            logging.error("Remote server failed",exc_info=True); self.set_status(f"手机遥控服务启动失败：{exc}")
+
+    def _remote_command_from_server(self,action,value):
+        self._queue_ui(("remote_command",action,value))
+
+    def _remote_tick(self):
+        if self._closing:return
+        try:
+            if self.remote_server:self.remote_server.update_app_state(self._remote_state())
+        except Exception:logging.debug("Remote state update failed",exc_info=True)
+        self.remote_tick_job=self.after(250,self._remote_tick)
+
+    def _remote_state(self):
+        def detail(mode):
+            values=dict(self.settings_store.data["detail_params"].get(mode,{}))
+            if self.mode=={"video":"视频播放","music":"音乐演示","live":"实时拾音"}.get(mode):
+                values.update(self._detail_snapshot(mode))
+            return values
+        macros=[]
+        for x,y in self.lp.pads:
+            macro=self._macro_get(x,y)
+            macros.append({"x":x,"y":y,"key":self._macro_key(x,y),"label":self.lp.pad_label(x,y),
+                           "action":macro.get("action","") if macro else "","value":macro.get("value","") if macro else "",
+                           "color":macro.get("color","#202633") if macro else "#202633","configured":bool(macro)})
+        music_analysis=getattr(self.music,"analysis",None) if self.music else None
+        music_pos=0.0
+        if self.music and music_analysis:
+            with self.music.lock:music_pos=float(self.music.cursor/music_analysis.sr)
+        return {
+            "version":1,
+            "mode":self.mode,"active_mode":self.active_mode,"active_utility":self.active_utility,
+            "status":self.status_var.get(),
+            "launchpad":{"connected":self.lp.connected,"model":self.lp.model.name,"model_key":self.lp.model.key,
+                         "models":[{"key":"auto","name":"自动识别"}]+[{"key":m.key,"name":m.name} for m in MODELS],
+                         "inputs":list(getattr(self,"midi_inputs",[])),"outputs":list(getattr(self,"midi_outputs",[]))},
+            "global":{"palette":self.palette_var.get(),"palettes":list(PALETTES),"brightness":round(self.brightness.get()),
+                      "custom_color":self.custom_color,"macro_control":bool(self.settings_store.data.get("macro_control_enabled",False))},
+            "performance":dict(self.last_perf_stats),
+            "macros":macros,
+            "video":{"playlist":[Path(p).name for p in self.video_playlist],"index":self.video_index,
+                     "position":round(float(getattr(self.video,"position",0.0)),3),"duration":round(float(getattr(self.video,"duration",0.0)),3),
+                     "paused":bool(getattr(self.video,"paused",False)),"running":bool(self.video.thread and self.video.thread.is_alive()),
+                     "detail":detail("video")},
+            "music":{"playlist":[Path(p).name for p in self.audio_playlist],"index":self.audio_index,
+                     "position":round(music_pos,3),"duration":round(float(getattr(music_analysis,"duration",0.0) or 0.0),3),
+                     "paused":bool(getattr(self.music,"paused",False)) if self.music else False,
+                     "running":bool(self.music and self.music.worker and self.music.worker.is_alive()),"detail":detail("music"),
+                     "analysis":({"bpm":music_analysis.bpm,"mood":music_analysis.mood,"genre":music_analysis.genre,
+                                  "energy":round(float(music_analysis.energy),3)} if music_analysis else {})},
+            "live":{"devices":[{"id":i,"name":n} for i,n in getattr(self,"live_devices",[])],"selected":self.settings_store.data.get("live_device",""),
+                    "running":bool(self.live and self.live.worker and self.live.worker.is_alive()),"detail":detail("live")},
+            "utilities":{"allowed":["数字时钟","日历","天气","专注计时器"],"selected":self.settings_store.data["utilities"].get("selected","数字时钟"),
+                         "running":bool(self.utility_running and self.active_utility in ("数字时钟","日历","天气","专注计时器")),
+                         "weather_city":self.settings_store.data["utilities"].get("weather_city","北京"),"weather":self.weather_data or {},
+                         "focus_minutes":self.settings_store.data["utilities"].get("focus_minutes",25),"focus_remaining":self.focus_remaining,
+                         "focus_paused":self.focus_paused},
+            "presets":{"video":self._preset_names("video"),"music":self._preset_names("music"),"live":self._preset_names("live")},
+        }
+
+    def _remote_dialog(self):
+        win=tk.Toplevel(self); win.title("手机遥控"); win.geometry("510x430"); win.configure(bg=BG); win.transient(self)
+        cfg=self.settings_store.data["remote"]
+        tk.Label(win,text="局域网手机遥控",bg=BG,fg=TEXT,font=("Segoe UI Semibold",16)).pack(anchor="w",padx=22,pady=(20,4))
+        tk.Label(win,text="手机与电脑连接同一局域网后，在 Android 客户端填写下方地址和配对 PIN。",
+                 bg=BG,fg=MUTED,wraplength=455,justify="left").pack(anchor="w",padx=22,pady=(0,16))
+        enabled=tk.BooleanVar(value=bool(cfg.get("enabled",True)))
+        def toggle():
+            cfg["enabled"]=bool(enabled.get()); self.settings_store.save(); self._restart_remote_server()
+        ttk.Checkbutton(win,text="启用局域网遥控服务",variable=enabled,command=toggle).pack(anchor="w",padx=22)
+        address=(self.remote_server.urls()[0] if self.remote_server and self.remote_server.urls() else f"http://127.0.0.1:{cfg.get('port',8765)}/")
+        box=tk.Frame(win,bg=PANEL2,padx=14,pady=12); box.pack(fill="x",padx=22,pady=12)
+        tk.Label(box,text="电脑地址",bg=PANEL2,fg=MUTED).pack(anchor="w")
+        tk.Label(box,text=address,bg=PANEL2,fg=TEXT,font=("Consolas",11)).pack(anchor="w",pady=(2,10))
+        tk.Label(box,text="配对 PIN",bg=PANEL2,fg=MUTED).pack(anchor="w")
+        tk.Label(box,text=cfg["pin"],bg=PANEL2,fg=TEXT,font=("Segoe UI Semibold",24)).pack(anchor="w")
+        def copy_pairing():
+            self.clipboard_clear(); self.clipboard_append(f"{address}\n{cfg['pin']}"); self.update_idletasks(); self.set_status("手机遥控地址和 PIN 已复制")
+        ttk.Button(win,text="复制地址和 PIN",command=copy_pairing).pack(fill="x",padx=22,pady=(2,6))
+        def regenerate():
+            cfg["pin"]=f"{secrets.randbelow(1_000_000):06d}"; self.settings_store.save(); self._restart_remote_server(); win.destroy(); self._remote_dialog()
+        ttk.Button(win,text="重新生成配对 PIN",command=regenerate).pack(fill="x",padx=22,pady=6)
+        clients=self.remote_server.connected_clients if self.remote_server else 0
+        state="运行中" if self.remote_server and not self.remote_server.error else "未运行"
+        tk.Label(win,text=f"服务：{state} · 已连接手机：{clients} 台 · 端口：{cfg.get('port',8765)}",
+                 bg=BG,fg=GOOD if state=="运行中" else BAD).pack(anchor="w",padx=22,pady=(10,0))
+
+    def _remote_show(self,name):
+        if self.mode!=name:self._show_mode(name)
+
+    def _handle_remote_command(self,action,value):
+        try:
+            if action=="app.stop":self._stop_all()
+            elif action=="app.blackout":self._stop_all_and_clear()
+            elif action=="app.test_lights":self._test_lights() if self.lp.connected else self.set_status("Launchpad 尚未连接")
+            elif action=="mode.show" and value in self.mode_buttons:self._show_mode(value)
+            elif action=="global.palette" and value in PALETTES:
+                self.palette_var.set(value); self._palette_changed()
+            elif action=="global.brightness":
+                self.brightness.set(max(10,min(100,float(value)))); self._brightness_changed()
+            elif action=="global.custom_color" and isinstance(value,str) and len(value)==7 and value.startswith("#"):
+                int(value[1:],16); self.custom_color=value; self.settings_store.data["custom_color"]=value
+                h=value[1:]; rgb=tuple(int(h[i:i+2],16) for i in (0,2,4)); PALETTES["自定义"]=(tuple(int(v*.18) for v in rgb),rgb)
+                self.palette_var.set("自定义"); self._palette_changed()
+            elif action=="macro_control":
+                enabled=bool(value); self.settings_store.data["macro_control_enabled"]=enabled; self.settings_store.save(); self.set_status("宏按键并行控制已开启" if enabled else "宏按键并行控制已关闭")
+            elif action=="performance.start":self._remote_show("性能监控"); self._start_perf()
+            elif action=="macro.start":self._remote_show("宏按键"); self._start_macros()
+            elif action=="macro.trigger":self._remote_macro_trigger(value)
+            elif action=="macro.save":self._remote_macro_save(value)
+            elif action=="macro.clear":self._remote_macro_clear(value)
+            elif action.startswith("video."):self._remote_video(action[6:],value)
+            elif action.startswith("music."):self._remote_music(action[6:],value)
+            elif action.startswith("live."):self._remote_live(action[5:],value)
+            elif action.startswith("utility."):self._remote_utility(action[8:],value)
+            elif action.startswith("preset."):self._remote_preset(action[7:],value)
+            elif action=="device.refresh":self._refresh_midi(); self.set_status("MIDI 设备列表已刷新")
+            elif action=="device.connect":self._remote_connect(value)
+        except Exception as exc:
+            logging.warning("Remote command failed: %s",action,exc_info=True); self.set_status(f"手机遥控命令失败：{exc}")
+
+    def _remote_xy(self,value):
+        if not isinstance(value,dict):raise ValueError("按键参数无效")
+        xy=(int(value.get("x")),int(value.get("y")))
+        if xy not in self.lp.pads:raise ValueError("按键不存在")
+        return xy
+
+    def _remote_macro_trigger(self,value):
+        xy=self._remote_xy(value); macro=self._macro_get(*xy)
+        if macro:self.macro_exec.execute(macro); self.set_status(f"手机执行宏 {self.lp.pad_label(*xy)}")
+
+    def _remote_macro_save(self,value):
+        xy=self._remote_xy(value); action=str(value.get("action","热键")); macro_value=str(value.get("value","")); color=str(value.get("color","#7c5cff"))
+        if action not in ["热键","输入文字","打开文件/程序","打开网址","执行命令","PowerShell","媒体控制","按键序列","鼠标操作","系统操作","设置音量","组合动作"]:raise ValueError("不支持的宏类型")
+        if not (len(color)==7 and color.startswith("#")):color="#7c5cff"
+        self.settings_store.data["macros"][self._macro_key(*xy)]={"action":action,"value":macro_value,"color":color}; self.settings_store.save()
+        if self.active_mode=="宏按键":self._render_macro_profile()
+
+    def _remote_macro_clear(self,value):
+        xy=self._remote_xy(value); macros=self.settings_store.data["macros"]
+        macros.pop(self._macro_key(*xy),None); macros.pop(str(self.lp.pad_id(*xy)),None); self.settings_store.save()
+        if self.active_mode=="宏按键":self._render_macro_profile()
+
+    def _remote_video(self,command,value):
+        self._remote_show("视频播放")
+        if command=="select":
+            self.video_index=max(0,min(len(self.video_playlist)-1,int(value))) if self.video_playlist else -1
+            if self.video_index>=0:self.video_list.selection_clear(0,"end"); self.video_list.selection_set(self.video_index)
+        elif command=="play":self._start_video()
+        elif command in ("pause","resume"):
+            running=bool(self.video.thread and self.video.thread.is_alive())
+            if running and bool(self.video.paused)==(command=="resume"):self._video_pause()
+        elif command=="previous":self._advance_video(-1)
+        elif command=="next":self._advance_video(1)
+        elif command=="seek":self.video.seek(float(value))
+        elif command=="rate":self.video_rate.set(str(value)); self.video.set_rate(self._rate(self.video_rate.get())); self._save_detail_now("video")
+        elif command=="loop":self.video_loop.set(str(value)); self._save_detail_now("video")
+        elif command=="effect":self.video_effect.set(str(value)); self._update_video_effect()
+        elif command=="param" and isinstance(value,dict):
+            for key,item in value.items():
+                if key=="fps":self.video_fps.set(max(5,min(30,int(item))))
+                elif key in self.video_vars:self.video_vars[key].set(float(item))
+            self._update_video_effect()
+
+    def _remote_music(self,command,value):
+        self._remote_show("音乐演示")
+        if command=="select":
+            self.audio_index=max(0,min(len(self.audio_playlist)-1,int(value))) if self.audio_playlist else -1
+            if self.audio_index>=0:self.audio_list.selection_clear(0,"end"); self.audio_list.selection_set(self.audio_index)
+        elif command=="play":self._start_music()
+        elif command in ("pause","resume"):
+            running=bool(self.music and self.music.worker and self.music.worker.is_alive())
+            if running and bool(self.music.paused)==(command=="resume"):self._audio_pause()
+        elif command=="previous":self._advance_audio(-1)
+        elif command=="next":self._advance_audio(1)
+        elif command=="seek" and self.music:self.music.seek(float(value))
+        elif command=="rate":self.audio_rate.set(str(value)); self.music and self.music.set_rate(self._rate(self.audio_rate.get())); self._save_detail_now("music")
+        elif command=="loop":self.audio_loop.set(str(value)); self._save_detail_now("music")
+        elif command=="volume":self.audio_volume.set(max(0,min(100,float(value)))); self._music_volume_changed()
+        elif command=="style" and value in self._visual_styles():self.music_style.set(value); self._update_music_visual()
+        elif command=="param" and isinstance(value,dict):
+            for key,item in value.items():
+                if key in self.music_visual_vars:self.music_visual_vars[key].set(float(item))
+            self._update_music_visual()
+
+    def _remote_live(self,command,value):
+        self._remote_show("实时拾音")
+        if command=="device":
+            target=str(value); index=next((i for i,(device_id,name) in enumerate(self.live_devices) if device_id==target or name==target),-1)
+            if index>=0:self.live_combo.current(index); self._live_device_changed()
+        elif command=="start":self._start_live()
+        elif command=="style" and value in self._visual_styles():self.live_style.set(value); self._update_live_visual()
+        elif command=="param" and isinstance(value,dict):
+            for key,item in value.items():
+                if key in self.live_visual_vars:self.live_visual_vars[key].set(float(item))
+            self._update_live_visual()
+
+    def _remote_utility(self,command,value):
+        allowed=("数字时钟","日历","天气","专注计时器")
+        self._remote_show("工具与游戏")
+        if command=="select":
+            if value not in allowed:raise ValueError("手机端不提供游戏控制")
+            self.utility_choice.set(value); self._utility_selection_changed()
+        elif command=="start":
+            if self.utility_choice.get() not in allowed:raise ValueError("手机端不提供游戏控制")
+            self._start_utility()
+        elif command=="stop":self._stop_utility(True)
+        elif command=="weather_city":
+            self.settings_store.data["utilities"]["weather_city"]=str(value).strip() or "北京"; self.settings_store.save()
+            if self.utility_choice.get()=="天气":self.weather_city.set(self.settings_store.data["utilities"]["weather_city"])
+        elif command=="focus_minutes":
+            minutes=max(1,min(180,int(value))); self.settings_store.data["utilities"]["focus_minutes"]=minutes; self.settings_store.save()
+            if self.utility_choice.get()=="专注计时器":self.focus_minutes.set(minutes)
+        elif command=="focus_pause":self._pause_focus()
+        elif command=="focus_reset":self._reset_focus()
+
+    def _remote_preset(self,command,value):
+        if not isinstance(value,dict):raise ValueError("预设参数无效")
+        mode=str(value.get("mode","")); name=str(value.get("name","")).strip()
+        page={"video":"视频播放","music":"音乐演示","live":"实时拾音"}.get(mode)
+        if not page or not name:raise ValueError("预设名称无效")
+        self._remote_show(page)
+        if command=="load":
+            values=self.settings_store.data["presets"][self._preset_group(mode)].get(name)
+            if not values:raise ValueError("找不到预设")
+            self._apply_detail_snapshot(mode,values); self._touch_recent(mode,name); self.settings_store.save()
+        elif command=="save":
+            self.settings_store.data["presets"][self._preset_group(mode)][name]=self._detail_snapshot(mode); self._touch_recent(mode,name); self.settings_store.save()
+
+    def _remote_connect(self,value):
+        if not isinstance(value,dict):raise ValueError("设备参数无效")
+        self._refresh_midi(); in_name=str(value.get("input","")); out_name=str(value.get("output","")); model=str(value.get("model","auto"))
+        if in_name not in self.midi_inputs or out_name not in self.midi_outputs:raise ValueError("所选 MIDI 端口已不存在")
+        if model!="auto" and model not in {m.key for m in MODELS}:raise ValueError("Launchpad 型号无效")
+        self.lp.connect(self.midi_inputs.index(in_name),self.midi_outputs.index(out_name),model)
+        self.settings_store.data["launchpad_model"]=model; self.settings_store.save(); self._connected_ui()
+
     def _macro_control_switch(self,parent=None):
         parent=parent or self.page
         self.macro_control_var=tk.BooleanVar(value=self.settings_store.data.get("macro_control_enabled",False))
@@ -306,6 +568,7 @@ class LaunchpadStudio(tk.Tk):
     def _perf_tick(self):
         if not self.running_perf or self.active_mode!="性能监控": return
         stats=self.performance.sample()
+        self.last_perf_stats=stats
         if self.mode=="性能监控":
             for k,l in getattr(self,"metric_labels",{}).items():
                 v=stats[k]; l.configure(text="不可用" if v is None else (f"{v:.1f}%" if k in ["CPU","RAM","GPU","磁盘"] else f"{v:.1f}"))
@@ -1283,6 +1546,7 @@ class LaunchpadStudio(tk.Tk):
                 elif kind=="rhythm_chart":self._rhythm_chart_ready(*event[1:])
                 elif kind=="rhythm_error":self._rhythm_chart_failed(*event[1:])
                 elif kind=="rhythm_finished" and self.active_mode=="工具与游戏":self._finish_rhythm_game()
+                elif kind=="remote_command":self._handle_remote_command(event[1],event[2])
                 elif kind=="show_window":self._show_window()
                 elif kind=="quit_app":self._close()
         except queue.Empty:pass
@@ -1356,6 +1620,11 @@ class LaunchpadStudio(tk.Tk):
     def _close(self):
         if self._closing:return
         self._closing=True; self._stop_all(); self.settings_store.data["brightness"]=round(self.brightness.get()); self.settings_store.save(); self.lp.disconnect()
+        if self.remote_tick_job:
+            try:self.after_cancel(self.remote_tick_job)
+            except Exception:pass
+        if self.remote_server:self.remote_server.stop()
+        if hasattr(self,"system_media"):self.system_media.stop()
         try:self.tray_icon.stop()
         except Exception:pass
         self.destroy()

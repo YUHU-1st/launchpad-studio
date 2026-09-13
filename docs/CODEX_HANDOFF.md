@@ -224,7 +224,13 @@ The phone also received:
 
 The output list during this test included AG06/AG03, Realtek Audio, NoMachine audio, and a NetEase virtual audio endpoint. This confirms that media/audio data streaming and device enumeration are working end-to-end on the real RC Plus.
 
-## 6. Highest-priority unresolved defects
+## 6. Completion update (2026-09-14)
+
+The previously listed release blockers are resolved: NetEase explicit play/pause works on the RC Plus, video/music idle controls use the correct command, all non-game remote modes passed real-device regression, and the packaged Windows application served the authenticated remote API successfully. COM is initialized in MTA mode for the Windows media worker so GSMTC and Core Audio can operate on the same thread.
+
+NetEase still exposes no duration or seek capability in the observed session. The UI therefore disables seeking for that player; it does not fake timeline data. The sections below are retained as historical diagnosis notes.
+
+## 7. Historical release blockers
 
 ### A. NetEase play/pause compatibility
 
@@ -281,7 +287,7 @@ Games must remain excluded from the mobile command surface.
 
 The updated PyInstaller build should be executed after the media/Android fixes. Verify that the frozen build includes all `winrt-*`, aiohttp, pycaw/comtypes, pyaudiowpatch, remote web assets, and existing helper binaries. Then test the remote server and GSMTC functionality from the packaged executable, not only from `.venv` Python.
 
-## 7. Recommended next execution order
+## 8. Historical execution order
 
 1. Inspect the local dirty working tree before doing anything else.
 2. Preserve and review the current Android 10 fixes in `MainActivity.java`.
@@ -295,7 +301,7 @@ The updated PyInstaller build should be executed after the media/Android fixes. 
 10. Build and smoke-test the Windows packaged application.
 11. Review `git diff --check`, remove or organize temporary debugging files, commit/push source, then produce a release APK (and preferably a Windows package) only after the above passes.
 
-## 8. Environment notes from the development machine
+## 9. Environment notes from the development machine
 
 Repository:
 

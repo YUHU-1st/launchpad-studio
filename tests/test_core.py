@@ -1,16 +1,20 @@
 import json
 import tempfile
 import unittest
+import comtypes
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import numpy as np
 
 from core.launchpad import MODELS, LaunchpadDevice, detect_model
+from core.macros import tap_hotkey
 from core.miniapps import SnakeGame, WhackAMole, calendar_frame, clock_frame, weather_frame
 from core.rhythm import RhythmGame, chart_from_analysis
 from core.settings import Settings
+from core.windows_media import SystemMediaBridge, parse_lrc
 
 
 class FakeMidiOut:
@@ -50,6 +54,82 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.data["detail_params"]["music"]["threshold"],.08)
             self.assertIn("freq_min",settings.data["detail_params"]["music"])
             settings.save(); self.assertEqual(Settings(path).data["detail_params"]["music"]["threshold"],.08)
+            self.assertEqual(Settings(path).data["remote"]["port"],8765)
+
+
+class RemoteMediaTests(unittest.TestCase):
+    def test_lrc_parser_orders_fractional_timestamps(self):
+        lines=parse_lrc("[00:12.50]第二句\n[00:01.250]第一句\n[01:02]第三句")
+        self.assertEqual([item["text"] for item in lines],["第一句","第二句","第三句"])
+        self.assertEqual(lines[0]["time"],1.25)
+
+    def test_lrc_parser_expands_multiple_timestamps(self):
+        lines=parse_lrc("[00:01.50][00:03.250]Hello\n[01:02]World")
+        self.assertEqual([item["time"] for item in lines],[1.5,3.25,62.0])
+        self.assertEqual([item["text"] for item in lines],["Hello","Hello","World"])
+
+
+class RemoteMediaCommandTests(unittest.IsolatedAsyncioTestCase):
+    def test_media_thread_initializes_com_as_mta(self):
+        with patch("core.windows_media.WindowsAudioSystem.snapshot",return_value={}):bridge=SystemMediaBridge()
+        def close_coroutine(coroutine):
+            coroutine.close()
+        with patch("comtypes.CoInitializeEx") as initialize, patch("comtypes.CoUninitialize") as uninitialize, \
+             patch("core.windows_media.asyncio.run",side_effect=close_coroutine):
+            bridge._thread_main()
+        initialize.assert_called_once_with(comtypes.COINIT_MULTITHREADED)
+        uninitialize.assert_called_once_with()
+
+    def test_media_key_mapping_uses_extended_key_events(self):
+        with patch("core.macros.user32.keybd_event") as key_event:
+            tap_hotkey("MEDIA_PLAY_PAUSE")
+        self.assertEqual(
+            [call.args for call in key_event.call_args_list],
+            [(0xB3,0,0x0001,0),(0xB3,0,0x0003,0)],
+        )
+
+    async def test_none_winrt_result_is_accepted_without_toggle_fallback(self):
+        methods={
+            "play":"try_play_async",
+            "pause":"try_pause_async",
+            "play_pause":"try_toggle_play_pause_async",
+        }
+        for action,method in methods.items():
+            with self.subTest(action=action):
+                session=SimpleNamespace(**{method:AsyncMock(return_value=None)})
+                self.assertTrue(await SystemMediaBridge._media_command(session,action,None))
+
+        session=SimpleNamespace(try_play_async=AsyncMock(return_value=None))
+        with patch("core.windows_media.WindowsAudioSystem.snapshot",return_value={}):bridge=SystemMediaBridge()
+        bridge.command("play")
+        with patch("core.windows_media.tap_hotkey") as tap:
+            await bridge._drain_commands(session)
+        tap.assert_not_called()
+
+    async def test_explicit_false_uses_safe_fallback_for_paused_session(self):
+        session=SimpleNamespace(
+            try_play_async=AsyncMock(return_value=False),
+            get_playback_info=lambda:SimpleNamespace(playback_status=5),
+        )
+        with patch("core.windows_media.WindowsAudioSystem.snapshot",return_value={}):bridge=SystemMediaBridge()
+        bridge.command("play")
+        with patch("core.windows_media.tap_hotkey") as tap, self.assertLogs("core.windows_media",level="INFO") as logs:
+            await bridge._drain_commands(session)
+        tap.assert_called_once_with("MEDIA_PLAY_PAUSE")
+        self.assertTrue(any("fallback_sent=True" in line for line in logs.output))
+
+    async def test_explicit_fallback_never_toggles_away_from_target_state(self):
+        playing=SimpleNamespace(get_playback_info=lambda:SimpleNamespace(playback_status=4))
+        paused=SimpleNamespace(get_playback_info=lambda:SimpleNamespace(playback_status=5))
+        with patch("core.windows_media.tap_hotkey") as tap:
+            self.assertFalse(SystemMediaBridge._fallback_media_key("play",playing))
+            self.assertFalse(SystemMediaBridge._fallback_media_key("pause",paused))
+        tap.assert_not_called()
+
+    async def test_seek_forwards_ticks_without_creating_timeline_state(self):
+        session=SimpleNamespace(try_change_playback_position_async=AsyncMock(return_value=True))
+        self.assertTrue(await SystemMediaBridge._media_command(session,"seek",12.345))
+        session.try_change_playback_position_async.assert_awaited_once_with(123450000)
 
 
 class MiniAppTests(unittest.TestCase):

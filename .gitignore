@@ -6,6 +6,7 @@ __pycache__/
 data/settings.json
 build/
 dist/
+release/
 *.spec
 tools/TemperatureHelper/bin/
 tools/TemperatureHelper/obj/
@@ -13,5 +14,9 @@ tools/TemperatureHelper/publish-old-*/
 vendor/
 .idea/
 .vscode/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
 Thumbs.db
 Desktop.ini

@@ -39,6 +39,7 @@ DEFAULT = {
                   "rhythm_lanes": 6, "waterfall_high_score": 0, "maimai_high_score": 0},
     "macro_control_enabled": False,
     "live_device": "",
+    "remote": {"enabled": True, "port": 8765, "pin": ""},
 }
 
 
@@ -61,6 +62,7 @@ class Settings:
                 merged = copy.deepcopy(DEFAULT[group]); merged.update(self.data.get(group, {}))
                 self.data[group] = merged
             self.data["utilities"] = {**DEFAULT["utilities"], **self.data.get("utilities", {})}
+            self.data["remote"] = {**DEFAULT["remote"], **self.data.get("remote", {})}
         except FileNotFoundError:
             pass
         except json.JSONDecodeError:

@@ -10,16 +10,21 @@ import webbrowser
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
+KEYEVENTF_EXTENDEDKEY = 0x0001
 
 VK = {
     "CTRL": 0x11, "CONTROL": 0x11, "ALT": 0x12, "SHIFT": 0x10, "WIN": 0x5B,
     "ENTER": 0x0D, "RETURN": 0x0D, "TAB": 0x09, "ESC": 0x1B, "ESCAPE": 0x1B,
     "SPACE": 0x20, "BACKSPACE": 0x08, "DELETE": 0x2E, "HOME": 0x24, "END": 0x23,
     "UP": 0x26, "DOWN": 0x28, "LEFT": 0x25, "RIGHT": 0x27,
-    "PLAY": 0xB3, "PAUSE": 0xB3, "NEXT": 0xB0, "PREV": 0xB1,
+    "PLAY": 0xB3, "PAUSE": 0xB3, "PLAY_PAUSE": 0xB3, "MEDIA_PLAY_PAUSE": 0xB3,
+    "NEXT": 0xB0, "MEDIA_NEXT": 0xB0, "PREV": 0xB1, "MEDIA_PREVIOUS": 0xB1,
     "VOLUMEUP": 0xAF, "VOLUMEDOWN": 0xAE, "MUTE": 0xAD,
 }
 VK.update({f"F{i}": 0x6F + i for i in range(1, 25)})
+EXTENDED_MEDIA_KEYS = {VK[name] for name in (
+    "MEDIA_PLAY_PAUSE", "MEDIA_NEXT", "MEDIA_PREVIOUS", "VOLUMEUP", "VOLUMEDOWN", "MUTE"
+)}
 MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP = 0x0002, 0x0004
 MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP = 0x0008, 0x0010
 MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP = 0x0020, 0x0040
@@ -37,9 +42,11 @@ def key_code(name: str) -> int:
 def tap_hotkey(spec: str):
     keys = [key_code(k) for k in spec.replace("-", "+").split("+") if k.strip()]
     for key in keys:
-        user32.keybd_event(key, 0, 0, 0)
+        flags = KEYEVENTF_EXTENDEDKEY if key in EXTENDED_MEDIA_KEYS else 0
+        user32.keybd_event(key, 0, flags, 0)
     for key in reversed(keys):
-        user32.keybd_event(key, 0, KEYEVENTF_KEYUP, 0)
+        flags = KEYEVENTF_EXTENDEDKEY if key in EXTENDED_MEDIA_KEYS else 0
+        user32.keybd_event(key, 0, flags | KEYEVENTF_KEYUP, 0)
 
 
 def type_text(text: str):

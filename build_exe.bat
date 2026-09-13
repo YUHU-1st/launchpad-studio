@@ -10,6 +10,18 @@ if not errorlevel 1 (
   .venv\Scripts\python.exe -m ensurepip --upgrade
   .venv\Scripts\python.exe -m pip install pyinstaller
 )
-.venv\Scripts\pyinstaller.exe --noconfirm --clean --windowed --name "LaunchpadStudio" --collect-all pyaudiowpatch --hidden-import=pystray._win32 --add-data "tools\TemperatureHelper\publish;tools\TemperatureHelper\publish" --hidden-import=sounddevice --hidden-import=soundfile app.py
+.venv\Scripts\pyinstaller.exe --noconfirm --clean --windowed --name "LaunchpadStudio" ^
+  --collect-all pyaudiowpatch ^
+  --collect-all winrt ^
+  --collect-all pycaw ^
+  --collect-all comtypes ^
+  --collect-all aiohttp ^
+  --hidden-import=pystray._win32 ^
+  --hidden-import=sounddevice ^
+  --hidden-import=soundfile ^
+  --add-data "remote;remote" ^
+  --add-data "tools\TemperatureHelper\publish;tools\TemperatureHelper\publish" ^
+  launchpad_remote.py
+if errorlevel 1 exit /b 1
 echo Build complete: dist\LaunchpadStudio\LaunchpadStudio.exe
 pause

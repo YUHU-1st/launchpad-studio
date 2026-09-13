@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d12">
+  <title>Launchpad Studio Remote</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="pair" class="overlay hidden">
+    <form id="pair-form" class="pair-card">
+      <div class="brand-mark">LS</div>
+      <h1>连接 Launchpad Studio</h1>
+      <p>输入电脑端“手机遥控”窗口显示的 6 位配对 PIN。</p>
+      <input id="pair-pin" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" required>
+      <button class="primary" type="submit">连接电脑</button>
+      <small>手机与电脑必须在同一局域网。PIN 只保存在本机。</small>
+    </form>
+  </div>
+  <header>
+    <div><strong>Launchpad Studio</strong><span id="connection" class="status offline">未连接</span></div>
+    <button id="stop-all" class="danger compact">全部停止</button>
+  </header>
+  <main>
+    <section id="tab-studio" class="tab active">
+      <div class="hero card">
+        <div><span class="eyebrow">当前状态</span><h2 id="active-mode">等待电脑</h2><p id="app-status">正在连接…</p></div>
+        <button id="blackout" class="ghost">熄灯</button>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>全局灯光</h3><span id="device-chip" class="chip">Launchpad 未连接</span></div>
+        <label>亮度 <b id="brightness-label">85%</b><input id="brightness" type="range" min="10" max="100" value="85"></label>
+        <div class="grid2"><label>配色<select id="palette"></select></label><label>自定义主色<input id="custom-color" type="color" value="#7c5cff"></label></div>
+        <label class="switch-row"><input id="macro-control" type="checkbox"><span>灯效运行时允许 Launchpad 同时触发宏</span></label>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>性能监控</h3><button id="perf-start" class="primary compact">开始</button></div>
+        <div id="perf-grid" class="metrics"></div>
+      </div>
+      <div class="card media-card">
+        <div class="card-title"><h3>视频像素播放器</h3><span id="video-state" class="chip">停止</span></div>
+        <select id="video-playlist"></select>
+        <input id="video-progress" type="range" min="0" max="1" step="0.1" value="0">
+        <div class="time-row"><span id="video-time">00:00</span><span id="video-duration">00:00</span></div>
+        <div class="transport"><button data-video="previous">⏮</button><button id="video-play" class="primary">播放</button><button data-video="next">⏭</button></div>
+        <div class="grid2"><label>速度<select id="video-rate"></select></label><label>循环<select id="video-loop"></select></label><label>滤镜<select id="video-effect"></select></label><label>帧率 <b id="video-fps-label"></b><input id="video-fps" type="range" min="5" max="30"></label></div>
+        <details><summary>滤镜细节</summary><div id="video-params" class="param-list"></div></details>
+        <div id="video-presets" class="preset-row"></div>
+      </div>
+      <div class="card media-card">
+        <div class="card-title"><h3>音乐灯光播放器</h3><span id="music-state" class="chip">停止</span></div>
+        <select id="music-playlist"></select><p id="music-analysis" class="muted">BPM -- · 情绪 -- · 能量 --</p>
+        <input id="music-progress" type="range" min="0" max="1" step="0.1" value="0">
+        <div class="time-row"><span id="music-time">00:00</span><span id="music-duration">00:00</span></div>
+        <div class="transport"><button data-music="previous">⏮</button><button id="music-play" class="primary">播放</button><button data-music="next">⏭</button></div>
+        <div class="grid2"><label>灯效<select id="music-style"></select></label><label>播放音量 <b id="music-volume-label"></b><input id="music-volume" type="range" min="0" max="100"></label><label>速度<select id="music-rate"></select></label><label>循环<select id="music-loop"></select></label></div>
+        <details><summary>灯效细节</summary><div id="music-params" class="param-list"></div></details>
+        <div id="music-presets" class="preset-row"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>实时拾音</h3><span id="live-state" class="chip">停止</span></div>
+        <label>输入设备<select id="live-device"></select></label><label>灯效<select id="live-style"></select></label>
+        <div class="button-row"><button id="live-refresh">刷新设备</button><button id="live-start" class="primary">开始实时灯光</button><button id="live-stop">停止</button></div>
+        <details><summary>灯效细节</summary><div id="live-params" class="param-list"></div></details>
+        <div id="live-presets" class="preset-row"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><h3>桌面工具</h3><span id="utility-state" class="chip">停止</span></div>
+        <label>功能<select id="utility-choice"></select></label>
+        <div id="weather-options"><label>天气城市<input id="weather-city" type="text" placeholder="杭州"></label></div>
+        <div id="focus-options"><label>专注分钟<input id="focus-minutes" type="number" min="1" max="180"></label><p id="focus-remaining" class="big-value">25:00</p></div>
+        <div class="button-row"><button id="utility-start" class="primary">开始 / 重启</button><button id="utility-pause">暂停 / 继续</button><button id="utility-reset">重置</button><button id="utility-stop">停止</button></div>
+      </div>
+    </section>
+    <section id="tab-media" class="tab">
+      <div class="now-playing card"><img id="cover" alt="专辑封面"><div class="track-text"><span class="eyebrow" id="media-app">Windows 媒体</span><h2 id="media-title">没有正在播放的媒体</h2><p id="media-artist">打开网易云音乐、PotPlayer、AIMP 等播放器</p><p id="media-album" class="muted"></p></div></div>
+      <div class="card"><div id="lyric-current" class="lyric current">—</div><div id="lyric-next" class="lyric next"></div><input id="system-progress" class="accent-range" type="range" min="0" max="1" step="0.1" value="0"><p id="seek-hint" class="muted hidden">当前播放器未向 Windows 提供可用进度控制</p><div class="time-row"><span id="system-time">00:00</span><span id="system-duration">00:00</span></div><div class="transport system"><button id="media-prev">⏮</button><button id="media-play" class="primary round">▶</button><button id="media-next">⏭</button></div><div class="button-row"><button id="media-repeat">循环：关</button><button id="media-shuffle">随机：关</button><button id="media-stop">停止</button></div></div>
+      <div class="card"><h3>Windows 音频</h3><label>系统音量 <b id="system-volume-label">--%</b><input id="system-volume" type="range" min="0" max="100"></label><label class="switch-row"><input id="system-mute" type="checkbox"><span>静音</span></label><label>音频输出设备<select id="audio-output"></select></label></div>
+      <details class="card"><summary>完整歌词</summary><div id="full-lyrics" class="full-lyrics">暂无歌词</div></details>
+    </section>
+    <section id="tab-macros" class="tab"><div class="card"><div class="card-title"><h3>Launchpad 宏按键</h3><button id="macro-mode" class="primary compact">显示宏灯光</button></div><p class="muted">轻触按键立即执行，同时选中该键供下方编辑。游戏模式不会被手机端控制。</p><div id="macro-grid" class="macro-grid"></div></div><div class="card" id="macro-editor"><h3>编辑宏 <span id="macro-key" class="muted">未选择</span></h3><div class="grid2"><label>操作类型<select id="macro-action"></select></label><label>按键颜色<input id="macro-color" type="color" value="#7c5cff"></label></div><label>内容<textarea id="macro-value" rows="4" placeholder="CTRL+SHIFT+S / PLAY / 命令…"></textarea></label><div class="button-row"><button id="macro-save" class="primary">保存</button><button id="macro-test">测试执行</button><button id="macro-clear" class="danger">清除</button></div></div></section>
+    <section id="tab-settings" class="tab"><div class="card"><div class="card-title"><h3>Launchpad 设备</h3><button id="device-refresh">刷新</button></div><label>型号<select id="device-model"></select></label><label>MIDI 输入<select id="device-input"></select></label><label>MIDI 输出<select id="device-output"></select></label><div class="button-row"><button id="device-connect" class="primary">连接设备</button><button id="device-test">灯光测试</button></div></div><div class="card"><h3>连接信息</h3><p id="server-address" class="mono"></p><button id="forget-pin">忘记 PIN / 重新配对</button></div></section>
+  </main>
+  <nav><button class="nav active" data-tab="studio"><span>▦</span>Studio</button><button class="nav" data-tab="media"><span>♫</span>媒体</button><button class="nav" data-tab="macros"><span>⌘</span>宏</button><button class="nav" data-tab="settings"><span>⚙</span>设备</button></nav>
+  <script src="/app.js"></script>
+</body>
+</html>

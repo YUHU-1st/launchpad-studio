@@ -21,7 +21,7 @@ if not errorlevel 1 (
   --hidden-import=soundfile ^
   --add-data "remote;remote" ^
   --add-data "tools\TemperatureHelper\publish;tools\TemperatureHelper\publish" ^
-  launchpad_remote.py
+  launchpad_studio_remote.py
 if errorlevel 1 exit /b 1
 echo Build complete: dist\LaunchpadStudio\LaunchpadStudio.exe
 pause

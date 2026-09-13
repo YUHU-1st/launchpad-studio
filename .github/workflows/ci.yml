@@ -20,6 +20,6 @@ jobs:
       - name: Run core tests
         run: python -m unittest discover -s tests -v
       - name: Compile Python sources
-        run: python -m compileall -q app.py launchpad_remote.py core tests
+        run: python -m compileall -q app.py launchpad_remote.py launchpad_studio_remote.py core tests
       - name: Check remote JavaScript syntax
         run: node --check remote/app.js

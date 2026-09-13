@@ -178,7 +178,12 @@ class RemoteServer:
         return web.FileResponse(self.web_root / "index.html")
 
     async def _asset(self, request: web.Request):
-        name = request.match_info.route.resource.canonical.strip("/")
+        # Routes are explicit, so only the basename can ever be requested here.
+        # Avoid deriving it from aiohttp's internal route objects; that changed
+        # across aiohttp releases and broke Android clients on some builds.
+        name = request.path.rsplit("/", 1)[-1]
+        if name not in {"app.js", "style.css"}:
+            raise web.HTTPNotFound()
         path = self.web_root / name
         if not path.is_file():
             raise web.HTTPNotFound()

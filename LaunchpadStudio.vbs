@@ -4,7 +4,7 @@ Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 base = fso.GetParentFolderName(WScript.ScriptFullName)
 pythonw = base & "\.venv\Scripts\pythonw.exe"
-app = base & "\launchpad_remote.py"
+app = base & "\launchpad_studio_remote.py"
 setup = base & "\setup.ps1"
 
 If Not fso.FileExists(pythonw) Then

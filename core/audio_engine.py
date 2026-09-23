@@ -90,7 +90,7 @@ class AudioAnalysis:
         return self.data[i:i+size]
 
 
-def reactive_frame(samples, sr, style="频谱", palette="霓虹", brightness=1.0, tick=0, params=None):
+def reactive_frame(samples, sr, style="频谱", palette="霓虹", brightness=1.0, tick=0, params=None, output_size=(8, 8)):
     params = params or {}
     freq_min = max(20.0, float(params.get("freq_min", 40)))
     freq_max = min(sr / 2, max(freq_min + 10, float(params.get("freq_max", 16000))))
@@ -101,7 +101,8 @@ def reactive_frame(samples, sr, style="频谱", palette="霓虹", brightness=1.0
     speed = max(.05, float(params.get("speed", 1.0)))
     spread = max(.1, float(params.get("spread", 1.0)))
     low, high = PALETTES.get(palette, PALETTES["霓虹"])
-    frame = {xy: (0, 0, 0) for xy in ALL_PADS}
+    width,height=(max(1,int(output_size[0])),max(1,int(output_size[1])))
+    frame = {(x,y+1):(0,0,0) for y in range(height) for x in range(width)}
     if samples is None or len(samples) < 32:
         return frame
     samples = np.asarray(samples, dtype=np.float32)
@@ -114,7 +115,7 @@ def reactive_frame(samples, sr, style="频谱", palette="霓虹", brightness=1.0
     windowed = samples * np.hanning(len(samples))
     spec = np.abs(np.fft.rfft(windowed))
     freqs = np.fft.rfftfreq(len(samples), 1 / sr)
-    edges = np.geomspace(freq_min, freq_max, 9)
+    edges = np.geomspace(freq_min, freq_max, width+1)
     levels = []
     for lo, hi in zip(edges[:-1], edges[1:]):
         band = spec[(freqs >= lo) & (freqs < hi)]
@@ -127,77 +128,80 @@ def reactive_frame(samples, sr, style="频谱", palette="霓虹", brightness=1.0
     phase = tick * speed
     if style == "频谱":
         for x, level in enumerate(levels):
-            h = round(level * 8)
+            h = round(level * height)
             for i in range(h):
-                frame[(x, 8-i)] = tuple(round(c*brightness) for c in mix(low, high, i/7))
+                frame[(x, height-i)] = tuple(round(c*brightness) for c in mix(low, high, i/max(1,height-1)))
     elif style == "对称频谱":
-        mirror = np.r_[levels[:4], levels[3::-1]]
+        half=(width+1)//2; mirror=np.r_[levels[:half],levels[:width-half][::-1]]
         for x, level in enumerate(mirror):
-            h = round(level * 4)
+            h = round(level * height/2)
             for i in range(h):
-                color = tuple(round(c*brightness) for c in mix(low, high, i/3))
-                frame[(x, 4-i)] = color; frame[(x, 5+i)] = color
+                color = tuple(round(c*brightness) for c in mix(low, high, i/max(1,height//2-1)))
+                upper=max(1,height//2-i); lower=min(height,height//2+1+i)
+                frame[(x,upper)] = color; frame[(x,lower)] = color
     elif style == "波形":
-        points = np.array_split(samples, 8)
+        points = np.array_split(samples, width)
         wave = [float(np.mean(p)) * sensitivity for p in points]
         for x, value in enumerate(wave):
-            center = int(np.clip(round(4.5 - value * 18), 1, 8))
-            for y in range(max(1, center-1), min(8, center+1)+1):
+            center = int(np.clip(round((height+1)/2 - value * height*2.25), 1, height))
+            for y in range(max(1, center-1), min(height, center+1)+1):
                 power = 1 if y == center else .35
-                frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low, high, x/7))
+                frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low, high, x/max(1,width-1)))
     elif style == "涟漪":
-        radius = (phase * .18) % 6
-        for y in range(1, 9):
-            for x in range(8):
-                d = math.hypot(x-3.5, y-4.5)
+        radius = (phase * .18) % max(width,height)
+        for y in range(1, height+1):
+            for x in range(width):
+                d = math.hypot(x-(width-1)/2, y-(height+1)/2)
                 power = max(0, 1-abs(d-radius)/(1.6*spread)) * loudness
-                frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low, high, d/6))
+                frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low, high, d/max(1,max(width,height))))
     elif style == "脉冲":
         power = loudness
-        for y in range(1, 9):
-            for x in range(8):
-                d = max(abs(x-3.5), abs(y-4.5))
-                on = d <= .7 + power*4
+        for y in range(1, height+1):
+            for x in range(width):
+                d = max(abs(x-(width-1)/2), abs(y-(height+1)/2))
+                on = d <= .7 + power*max(width,height)/2
                 if on:
-                    frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low, high, d/4))
+                    frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low, high, d/max(1,max(width,height)/2)))
     elif style == "星云":
-        for y in range(1,9):
-            for x in range(8):
-                hue = ((x+y)/16 + phase*.012 + levels[x]*.25*spread) % 1
+        for y in range(1,height+1):
+            for x in range(width):
+                hue = ((x+y)/max(1,width+height) + phase*.012 + levels[x]*.25*spread) % 1
                 rgb = colorsys.hsv_to_rgb(hue, .85, min(1, .06+loudness*.65+levels[x]*.35))
                 frame[(x,y)] = tuple(round(v*255*brightness) for v in rgb)
     elif style == "雨幕":
         rng = np.random.default_rng(int(phase * 2))
-        for x in range(8):
-            head = int((phase * (.12 + levels[x]*.35) + x*1.7) % 11) - 2
-            for y in range(1,9):
+        for x in range(width):
+            head = int((phase * (.12 + levels[x]*.35) + x*1.7) % (height+3)) - 2
+            for y in range(1,height+1):
                 trail = y - head
                 power = max(0, 1-abs(trail)/(2.2*spread)) * (.25+levels[x]*.75)
                 if rng.random() < .04*loudness: power = max(power, loudness)
-                frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low, high, x/7))
+                frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low, high, x/max(1,width-1)))
     elif style == "火焰":
         rng = np.random.default_rng(int(phase))
-        for y in range(1,9):
-            base = (y-1)/7
-            for x in range(8):
+        for y in range(1,height+1):
+            base = (y-1)/max(1,height-1)
+            for x in range(width):
                 flicker = .7 + .3*rng.random()
                 power = max(0, loudness*1.25 - base/(1.2*spread)) * flicker
                 flame = mix((255,25,0),(255,220,20),max(0,1-base))
-                frame[(x,9-y)] = tuple(round(c*brightness*min(1,power)) for c in flame)
+                frame[(x,height+1-y)] = tuple(round(c*brightness*min(1,power)) for c in flame)
     elif style == "隧道":
-        for y in range(1,9):
-            for x in range(8):
-                ring = max(abs(x-3.5),abs(y-4.5))
+        for y in range(1,height+1):
+            for x in range(width):
+                ring = max(abs(x-(width-1)/2),abs(y-(height+1)/2))
                 power = max(0, math.sin((ring*1.8-phase*.18)*math.pi)*.5+.5) * loudness
-                frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low,high,ring/4))
+                frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low,high,ring/max(1,max(width,height)/2)))
     else:  # 棋盘
-        for y in range(1,9):
-            for x in range(8):
+        for y in range(1,height+1):
+            for x in range(width):
                 power = loudness if (x+y+int(phase*.1))%2==0 else levels[x]*.25
-                frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low,high,(x+y)/15))
+                frame[(x,y)] = tuple(round(c*brightness*power) for c in mix(low,high,(x+y)/max(1,width+height-1)))
     edge = tuple(round(c*brightness*loudness) for c in high)
-    for x in range(8): frame[(x,0)] = edge if x <= round(levels.mean()*7) else (0,0,0)
-    for y in range(1,9): frame[(8,y)] = tuple(round(c*brightness*levels[8-y]) for c in low)
+    for x in range(width): frame[(x,0)] = edge if x <= round(levels.mean()*max(1,width-1)) else (0,0,0)
+    for y in range(1,height+1):
+        level=levels[min(width-1,int((height-y)*width/max(1,height)))]
+        frame[(width,y)] = tuple(round(c*brightness*level) for c in low)
     return frame
 
 
@@ -226,7 +230,7 @@ class MusicShow:
         self.path = str(path)
         return self.analysis
 
-    def start(self, path, style, palette, brightness, params=None, start_at=0.0, rate=1.0, loop_track=False):
+    def start(self, path, style, palette, brightness, params=None, start_at=0.0, rate=1.0, loop_track=False, output_size=(8, 8)):
         self.stop()
         if self.analysis is None or getattr(self, "path", None) != str(path):
             self.analyse(path)
@@ -234,7 +238,7 @@ class MusicShow:
         self.stop_event.clear()
         self.ended = False; self.paused = False; self.rate = float(rate); self.loop_track = loop_track
         self.cursor = max(0.0, min(self.analysis.duration, float(start_at))) * self.analysis.sr
-        self.visual = {"style":style, "palette":palette, "brightness":brightness, "params":params or {}}
+        self.visual = {"style":style, "palette":palette, "brightness":brightness, "params":params or {}, "output_size":output_size}
         channels = self.analysis.audio.shape[1]
         self.stream = sd.OutputStream(samplerate=self.analysis.sr, channels=channels,
                                       dtype="float32", blocksize=1024, latency="low",
@@ -285,7 +289,7 @@ class MusicShow:
             self.on_progress(pos, self.analysis.duration)
             if self.emit_frames:
                 self.on_frame(reactive_frame(self.analysis.window(pos), self.analysis.sr,
-                              visual["style"], visual["palette"], visual["brightness"], tick, visual["params"]))
+                              visual["style"], visual["palette"], visual["brightness"], tick, visual["params"], visual.get("output_size",(8,8))))
             tick += 1
             if ended:
                 natural_end = True; break
@@ -310,12 +314,13 @@ class MusicShow:
     def set_volume(self, volume):
         with self.lock: self.volume = max(0.0, min(1.0, float(volume)))
 
-    def set_visual(self, style=None, palette=None, brightness=None, params=None):
+    def set_visual(self, style=None, palette=None, brightness=None, params=None, output_size=None):
         with self.lock:
             if style is not None: self.visual["style"] = style
             if palette is not None: self.visual["palette"] = palette
             if brightness is not None: self.visual["brightness"] = brightness
             if params is not None: self.visual["params"] = params
+            if output_size is not None: self.visual["output_size"] = output_size
 
     def stop(self):
         self.stop_event.set()
@@ -343,13 +348,13 @@ class LiveAudio:
         self.backend = None
         self.visual = {"style":"星云", "palette":"霓虹", "brightness":1.0, "params":{}}
 
-    def start(self, device, style, palette, brightness, params=None):
+    def start(self, device, style, palette, brightness, params=None, output_size=(8, 8)):
         self.stop()
         if self.worker and self.worker.is_alive():
             raise RuntimeError("上一个音频设备仍在退出，请稍后再试")
         self.stop_event.clear()
         self.q = queue.Queue(maxsize=3)
-        self.visual = {"style":style, "palette":palette, "brightness":brightness, "params":params or {}}
+        self.visual = {"style":style, "palette":palette, "brightness":brightness, "params":params or {}, "output_size":output_size}
         if isinstance(device, str) and device.startswith("loop:"):
             return self._start_loopback(int(device.split(":", 1)[1]))
         if isinstance(device, str) and device.startswith("input:"):
@@ -391,7 +396,7 @@ class LiveAudio:
                 raw = self.stream.read(1024, exception_on_overflow=False)
                 samples = np.frombuffer(raw, dtype=np.float32).reshape(-1, channels).mean(axis=1)
                 v=self.visual
-                self.on_frame(reactive_frame(samples, sr, v["style"], v["palette"], v["brightness"], tick, v["params"]))
+                self.on_frame(reactive_frame(samples, sr, v["style"], v["palette"], v["brightness"], tick, v["params"], v.get("output_size",(8,8))))
                 tick += 1
             except Exception as exc:
                 self.on_status(f"系统声音回采错误：{exc}")
@@ -403,14 +408,15 @@ class LiveAudio:
             try: samples = self.q.get(timeout=.2)
             except queue.Empty: continue
             v=self.visual
-            self.on_frame(reactive_frame(samples, sr, v["style"], v["palette"], v["brightness"], tick, v["params"]))
+            self.on_frame(reactive_frame(samples, sr, v["style"], v["palette"], v["brightness"], tick, v["params"], v.get("output_size",(8,8))))
             tick += 1
 
-    def set_visual(self, style=None, palette=None, brightness=None, params=None):
+    def set_visual(self, style=None, palette=None, brightness=None, params=None, output_size=None):
         if style is not None: self.visual["style"] = style
         if palette is not None: self.visual["palette"] = palette
         if brightness is not None: self.visual["brightness"] = brightness
         if params is not None: self.visual["params"] = params
+        if output_size is not None: self.visual["output_size"] = output_size
 
     def stop(self):
         self.stop_event.set()

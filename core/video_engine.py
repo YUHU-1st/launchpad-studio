@@ -22,14 +22,15 @@ class VideoPlayer:
         self.seek_request = None
         self.effect = "原色视频"
         self.params = {}
+        self.output_size = (8, 8)
 
     def start(self, path, fps_limit=24, brightness=1.0, saturation=1.0,
-              rate=1.0, start_at=0.0, effect="原色视频", params=None):
+              rate=1.0, start_at=0.0, effect="原色视频", params=None, output_size=(8, 8)):
         self.stop()
         self.stop_event.clear()
         with self.lock:
             self.paused = False; self.rate = float(rate); self.position = float(start_at)
-            self.effect = effect; self.params = dict(params or {})
+            self.effect = effect; self.params = dict(params or {}); self.output_size = output_size
             self.params.setdefault("saturation", saturation)
             self.params.setdefault("brightness", brightness)
         self.thread = threading.Thread(target=self._run, args=(path, fps_limit), daemon=True)
@@ -57,8 +58,12 @@ class VideoPlayer:
             if effect is not None: self.effect = effect
             if params is not None: self.params.update(params)
 
-    def _filter(self, image, effect, params):
-        small = cv2.resize(image, (8, 8), interpolation=cv2.INTER_AREA)
+    def set_output_size(self, output_size):
+        with self.lock:self.output_size=(max(1,int(output_size[0])),max(1,int(output_size[1])))
+
+    def _filter(self, image, effect, params, output_size):
+        width, height = output_size
+        small = cv2.resize(image, (width, height), interpolation=cv2.INTER_AREA)
         rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB).astype(np.float32)
         saturation = float(params.get("saturation", 1.0))
         contrast = float(params.get("contrast", 1.0))
@@ -75,11 +80,11 @@ class VideoPlayer:
         elif effect == "单色辉光":
             rgb = (gray/255) * np.asarray(params.get("tint", (124,92,255)), dtype=np.float32)
         elif effect == "镜像万花筒":
-            q = rgb[:4,:4]
-            rgb = np.concatenate([np.concatenate([q,q[:,::-1]],1),
-                                  np.concatenate([q[::-1],q[::-1,::-1]],1)],0)
+            q = rgb[:(height+1)//2, :(width+1)//2]
+            top = np.concatenate([q, q[:, ::-1]], axis=1)[:, :width]
+            rgb = np.concatenate([top, top[::-1]], axis=0)[:height]
         elif effect == "像素故障":
-            shift = int(time.monotonic()*8)%8
+            shift = int(time.monotonic()*8)%max(1,width)
             rgb[::2] = np.roll(rgb[::2],shift,axis=1); rgb[:,:,0] = np.roll(rgb[:,:,0],1,axis=1)
         gray = rgb.mean(axis=2,keepdims=True)
         rgb = gray+(rgb-gray)*saturation
@@ -99,7 +104,7 @@ class VideoPlayer:
         while not self.stop_event.is_set():
             with self.lock:
                 paused,rate=self.paused,self.rate; seek=self.seek_request; self.seek_request=None
-                effect,params=self.effect,dict(self.params)
+                effect,params=self.effect,dict(self.params); output_size=self.output_size
             if seek is not None:
                 cap.set(cv2.CAP_PROP_POS_MSEC,seek*1000); self.position=seek; next_time=time.monotonic()
             if paused:
@@ -111,11 +116,12 @@ class VideoPlayer:
                 skip_accum += advance-1
                 grabs=int(skip_accum); skip_accum-=grabs
                 for _ in range(grabs): cap.grab()
-            rgb=self._filter(image,effect,params); frame={xy:(0,0,0) for xy in ALL_PADS}
-            for y in range(8):
-                for x in range(8): frame[(x,y+1)]=tuple(int(v) for v in rgb[y,x])
-            for x in range(8): frame[(x,0)]=tuple(int(v) for v in rgb[:,x].mean(axis=0))
-            for y in range(8): frame[(8,y+1)]=tuple(int(v) for v in rgb[y].mean(axis=0))
+            width,height=output_size
+            rgb=self._filter(image,effect,params,output_size); frame={}
+            for y in range(height):
+                for x in range(width): frame[(x,y+1)]=tuple(int(v) for v in rgb[y,x])
+            for x in range(width): frame[(x,0)]=tuple(int(v) for v in rgb[:,x].mean(axis=0))
+            for y in range(height): frame[(width,y+1)]=tuple(int(v) for v in rgb[y].mean(axis=0))
             self.position=cap.get(cv2.CAP_PROP_POS_MSEC)/1000
             self.on_frame(frame); self.on_progress(self.position,self.duration)
             next_time += 1/fps if advance>=1 else 1/(source_fps*max(.25,rate))

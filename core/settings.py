@@ -25,6 +25,7 @@ DEFAULT = {
     "video_playlist": [],
     "audio_playlist": [],
     "launchpad_model": "auto",
+    "multi_launchpad": {"enabled": False, "link_mode": "扩展画布", "devices": []},
     "detail_params": {
         "music": {**AUDIO_DETAIL_DEFAULTS, "style": "频谱", "volume": 85, "rate": "1.00×", "loop": "列表循环"},
         "live": {**AUDIO_DETAIL_DEFAULTS, "style": "星云"},
@@ -63,6 +64,7 @@ class Settings:
                 self.data[group] = merged
             self.data["utilities"] = {**DEFAULT["utilities"], **self.data.get("utilities", {})}
             self.data["remote"] = {**DEFAULT["remote"], **self.data.get("remote", {})}
+            self.data["multi_launchpad"] = {**DEFAULT["multi_launchpad"], **self.data.get("multi_launchpad", {})}
         except FileNotFoundError:
             pass
         except json.JSONDecodeError:

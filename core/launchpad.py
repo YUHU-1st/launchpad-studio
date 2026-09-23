@@ -63,9 +63,9 @@ class LaunchpadModel:
 
 
 MODELS = (
-    LaunchpadModel("pro_mk3", "Launchpad Pro MK3", ("launchpad pro mk3", "launchpad pro [mk3]"), PRO_PADS, "modern", "modern_rgb", 0x0E),
-    LaunchpadModel("mini_mk3", "Launchpad Mini MK3", ("launchpad mini mk3", "launchpad mini [mk3]"), tuple(CANONICAL_PADS), "modern", "modern_rgb", 0x0D),
-    LaunchpadModel("x", "Launchpad X", ("launchpad x",), tuple(CANONICAL_PADS), "modern", "modern_rgb", 0x0C),
+    LaunchpadModel("pro_mk3", "Launchpad Pro MK3", ("launchpad pro mk3", "launchpad pro [mk3]", "lppromk3"), PRO_PADS, "modern", "modern_rgb", 0x0E),
+    LaunchpadModel("mini_mk3", "Launchpad Mini MK3", ("launchpad mini mk3", "launchpad mini [mk3]", "lpminimk3"), tuple(CANONICAL_PADS), "modern", "modern_rgb", 0x0D),
+    LaunchpadModel("x", "Launchpad X", ("launchpad x", "lpx midi", "lpxmidi"), tuple(CANONICAL_PADS), "modern", "modern_rgb", 0x0C),
     LaunchpadModel("pro", "Launchpad Pro", ("launchpad pro",), PRO_PADS, "modern", "mk2_rgb", 0x10),
     LaunchpadModel("mk2", "Launchpad MK2", ("launchpad mk2", "launchpad [mk2]"), tuple(CANONICAL_PADS), "mk2", "mk2_rgb", 0x18),
     LaunchpadModel("mini_mk2", "Launchpad Mini MK2", ("launchpad mini mk2", "launchpad mini [mk2]"), tuple(CANONICAL_PADS), "legacy", "legacy_palette"),
@@ -74,6 +74,11 @@ MODELS = (
     LaunchpadModel("original", "Launchpad (Original)", ("launchpad",), tuple(CANONICAL_PADS), "legacy", "legacy_palette"),
 )
 MODEL_BY_KEY = {model.key: model for model in MODELS}
+
+
+def is_launchpad_port(name: str) -> bool:
+    compact = "".join(character for character in name.casefold() if character.isalnum())
+    return any(marker in compact for marker in ("launchpad", "lpx", "lpmini", "lppro"))
 
 
 def detect_model(*names: str, preferred: str = "auto") -> LaunchpadModel:

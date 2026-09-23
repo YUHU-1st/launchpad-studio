@@ -60,32 +60,34 @@ class PerformanceMonitor:
         except Exception:
             return None
 
-    def frame(self, stats, palette="霓虹", brightness=1.0):
+    def frame(self, stats, palette="霓虹", brightness=1.0, output_size=(8, 8)):
         low, high = PALETTES.get(palette, PALETTES["霓虹"])
-        frame = {xy: (0, 0, 0) for xy in ALL_PADS}
+        width,height=output_size
+        frame = {(x,y+1):(0,0,0) for y in range(height) for x in range(width)}
         metrics = [stats["CPU"], stats["RAM"], stats["磁盘"], stats["GPU"] or 0,
                    min(100, stats["网络 MB/s"] * 8), min(100, stats["磁盘 MB/s"] * 4),
                    sum(stats["cores"][::2]) / max(1, len(stats["cores"][::2])),
                    max(stats["cores"] or [0])]
-        for x, value in enumerate(metrics):
-            height = round(value / 100 * 8)
-            for iy in range(8):
-                y = 8 - iy
-                if iy < height:
-                    rgb = mix(low, high, iy / 7)
+        values=[metrics[min(len(metrics)-1,int(x*len(metrics)/max(1,width)))] for x in range(width)]
+        for x, value in enumerate(values):
+            bar_height = round(value / 100 * height)
+            for iy in range(height):
+                y = height - iy
+                if iy < bar_height:
+                    rgb = mix(low, high, iy / max(1,height-1))
                     frame[(x, y)] = tuple(round(c * brightness) for c in rgb)
         # Top: metric markers; right: a CPU/RAM blended meter.
-        for x in range(8):
-            frame[(x, 0)] = tuple(round(c * brightness * .55) for c in mix(low, high, x / 7))
+        for x in range(width):
+            frame[(x, 0)] = tuple(round(c * brightness * .55) for c in mix(low, high, x / max(1,width-1)))
         known_temps = [v for k, v in stats.get("temperatures", {}).items()
                        if k in ("CPU", "GPU", "主板", "存储") and isinstance(v, (int, float))]
         # Right controls become a thermal bar (30–100 °C). If no sensor is
         # available, keep the previous CPU/RAM activity fallback.
         thermal = max(known_temps) if known_temps else 30 + (stats["CPU"] + stats["RAM"]) * .35
         heat = max(0, min(100, (thermal - 30) / 70 * 100))
-        for y in range(1, 9):
-            if 9 - y <= heat / 100 * 8:
-                t = (8-y)/7
+        for y in range(1, height+1):
+            if height+1-y <= heat / 100 * height:
+                t = (height-y)/max(1,height-1)
                 heat_color = mix((0, 180, 255), (255, 30, 20), t)
-                frame[(8, y)] = tuple(round(c * brightness) for c in heat_color)
+                frame[(width, y)] = tuple(round(c * brightness) for c in heat_color)
         return frame

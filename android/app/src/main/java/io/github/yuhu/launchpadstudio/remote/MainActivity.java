@@ -59,7 +59,7 @@ public class MainActivity extends Activity {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(dp(16), dp(10), dp(10), dp(10));
         bar.setBackgroundColor(BG);
-        TextView title = text("Launchpad Studio Remote", 17, TEXT);
+        TextView title = text("Launchpad Studio 2 · Matrix Remote", 17, TEXT);
         bar.addView(title, new LinearLayout.LayoutParams(0, dp(46), 1));
         Button settings = button("连接设置", false);
         settings.setOnClickListener(v -> showConnectionPanel(""));

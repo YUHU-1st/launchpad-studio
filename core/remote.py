@@ -150,8 +150,10 @@ class RemoteServer:
     async def _info(self, request):
         from aiohttp import web
 
+        version_file = self.web_root.parent / "VERSION"
         return web.json_response({
-            "name": "Launchpad Studio Remote",
+            "name": "Launchpad Studio 2 · Matrix Remote",
+            "version": version_file.read_text(encoding="utf-8").strip() if version_file.exists() else "2.0.0",
             "auth": "pin",
             "port": self.port,
         })

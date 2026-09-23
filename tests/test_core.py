@@ -9,11 +9,14 @@ from unittest.mock import AsyncMock, patch
 
 import numpy as np
 
-from core.launchpad import MODELS, LaunchpadDevice, detect_model
+from core.audio_engine import reactive_frame
+from core.launchpad import MODELS, LaunchpadDevice, detect_model, is_launchpad_port
 from core.macros import tap_hotkey
 from core.miniapps import SnakeGame, WhackAMole, calendar_frame, clock_frame, weather_frame
+from core.multi_launchpad import LINK_EXTEND, LINK_INDEPENDENT, canvas_geometry, normalize_configs, number_frame, route_frames
 from core.rhythm import RhythmGame, chart_from_analysis
 from core.settings import Settings
+from core.video_engine import VideoPlayer
 from core.windows_media import SystemMediaBridge, parse_lrc
 
 
@@ -37,12 +40,79 @@ class LaunchpadModelTests(unittest.TestCase):
         self.assertEqual(detect_model("Launchpad Mini MK3").key,"mini_mk3")
         self.assertEqual(detect_model("Launchpad MK2").key,"mk2")
 
+    def test_windows_abbreviated_port_names_are_detected(self):
+        self.assertTrue(is_launchpad_port("LPX MIDI"))
+        self.assertTrue(is_launchpad_port("MIDIIN2 (LPMiniMK3 MIDI)"))
+        self.assertEqual(detect_model("LPX MIDI").key,"x")
+        self.assertEqual(detect_model("LPMiniMK3 MIDI").key,"mini_mk3")
+        self.assertEqual(detect_model("LPProMK3 MIDI").key,"pro_mk3")
+
     def test_protocol_output(self):
         device=LaunchpadDevice(); device.out=FakeMidiOut(); device.connected=True
         device.set_model("x"); device.set_frame({(0,8):(255,128,0)},force=True)
         self.assertEqual(device.out.sysex_messages[-1][:7],bytes([240,0,32,41,2,12,3]))
         device.set_model("s"); device.set_frame({(0,8):(20,80,220)},force=True)
         self.assertTrue(device.out.short_messages)
+
+
+class MultiLaunchpadTests(unittest.TestCase):
+    def setUp(self):
+        self.pads=tuple((x,y) for y in range(9) for x in range(9) if not (y==0 and x==8))
+        self.frame={(x,y+1):(x*20,y*20,10) for y in range(8) for x in range(16)}
+        self.frame.update({(x,0):(1,2,3) for x in range(16)})
+
+    def test_relative_layout_normalizes_negative_coordinates(self):
+        width,height,positions=canvas_geometry([
+            {"id":"left","x":-1,"y":2},{"id":"right","x":1,"y":3},
+        ])
+        self.assertEqual((width,height),(3,2))
+        self.assertEqual(positions,{"left":(0,0),"right":(2,1)})
+
+    def test_extended_canvas_splits_across_devices(self):
+        self.frame[(0,0)]=(9,8,7); self.frame[(8,0)]=(6,5,4); self.frame[(16,1)]=(3,2,1)
+        configs=[{"id":"a","x":0,"y":0},{"id":"b","x":1,"y":0}]
+        routed=route_frames(configs,{"a":self.pads,"b":self.pads},{"视频播放":self.frame},LINK_EXTEND,"视频播放")
+        self.assertEqual(routed["a"][(0,1)],self.frame[(0,1)])
+        self.assertEqual(routed["b"][(0,1)],self.frame[(8,1)])
+        self.assertEqual(routed["b"][(7,8)],self.frame[(15,8)])
+        self.assertEqual(routed["a"][(0,0)],(9,8,7))
+        self.assertEqual(routed["b"][(0,0)],(6,5,4))
+        self.assertEqual(routed["a"][(8,1)],(3,2,1))
+
+    def test_independent_sources_do_not_cross_devices(self):
+        red={(x,y):(255,0,0) for x,y in self.pads}
+        blue={(x,y):(0,0,255) for x,y in self.pads}
+        configs=[{"id":"a","mode":"性能监控"},{"id":"b","mode":"音乐演示"}]
+        routed=route_frames(configs,{"a":self.pads,"b":self.pads},{"性能监控":red,"音乐演示":blue},LINK_INDEPENDENT,"音乐演示")
+        self.assertEqual(routed["a"][(3,4)],(255,0,0))
+        self.assertEqual(routed["b"][(3,4)],(0,0,255))
+
+    def test_number_identifier_is_visible_and_distinct(self):
+        one=number_frame(1); twelve=number_frame(12)
+        self.assertNotEqual(one,twelve)
+        self.assertGreater(sum(color==(0,210,255) for color in twelve.values()),8)
+
+    def test_audio_and_video_render_native_wide_canvas(self):
+        samples=np.sin(np.linspace(0,40*np.pi,4096)).astype(np.float32)
+        audio=reactive_frame(samples,44100,"频谱",output_size=(16,8))
+        self.assertIn((15,8),audio)
+        self.assertIn((16,8),audio)
+        image=np.zeros((90,160,3),dtype=np.uint8); image[:,:,1]=180
+        video=VideoPlayer(lambda _frame:None)._filter(image,"原色视频",{},(16,8))
+        self.assertEqual(video.shape,(8,16,3))
+
+    def test_mobile_multi_device_config_is_normalized_and_validated(self):
+        raw=[{"id":"lp1","number":1,"x":-1,"y":0,"mode":"音乐演示","model":"x","input_index":0,"output_index":1},
+             {"id":"lp2","number":2,"x":0,"y":0,"mode":"性能监控","model":"mk2","input_index":1,"output_index":2}]
+        configs=normalize_configs(raw,["LPX MIDI","Launchpad MK2"],["Synth","LPX MIDI","Launchpad MK2"],{"auto","x","mk2"},LINK_EXTEND)
+        self.assertEqual(configs[0]["input"],"LPX MIDI")
+        self.assertEqual(configs[1]["output"],"Launchpad MK2")
+        duplicate=[dict(raw[0]),dict(raw[1],input_index=0)]
+        with self.assertRaisesRegex(ValueError,"端口重复"):
+            normalize_configs(duplicate,["LPX MIDI","Launchpad MK2"],["Synth","LPX MIDI","Launchpad MK2"],{"auto","x","mk2"},LINK_EXTEND)
+        overlap=[dict(raw[0],x=0),dict(raw[1],x=0)]
+        with self.assertRaisesRegex(ValueError,"位置重叠"):
+            normalize_configs(overlap,["LPX MIDI","Launchpad MK2"],["Synth","LPX MIDI","Launchpad MK2"],{"auto","x","mk2"},LINK_EXTEND)
 
 
 class SettingsTests(unittest.TestCase):
@@ -55,6 +125,7 @@ class SettingsTests(unittest.TestCase):
             self.assertIn("freq_min",settings.data["detail_params"]["music"])
             settings.save(); self.assertEqual(Settings(path).data["detail_params"]["music"]["threshold"],.08)
             self.assertEqual(Settings(path).data["remote"]["port"],8765)
+            self.assertEqual(Settings(path).data["multi_launchpad"]["link_mode"],"扩展画布")
 
 
 class RemoteMediaTests(unittest.TestCase):

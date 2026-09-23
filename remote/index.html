@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b0d12">
-  <title>Launchpad Studio Remote</title>
+  <title>Launchpad Studio 2 · Matrix Remote</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div id="pair" class="overlay hidden">
     <form id="pair-form" class="pair-card">
       <div class="brand-mark">LS</div>
-      <h1>连接 Launchpad Studio</h1>
+      <h1>连接 Launchpad Studio 2 · Matrix</h1>
       <p>输入电脑端“手机遥控”窗口显示的 6 位配对 PIN。</p>
       <input id="pair-pin" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" autocomplete="one-time-code" required>
       <button class="primary" type="submit">连接电脑</button>
@@ -19,7 +19,7 @@
     </form>
   </div>
   <header>
-    <div><strong>Launchpad Studio</strong><span id="connection" class="status offline">未连接</span></div>
+    <div><strong><span class="brand-long">Launchpad Studio 2 · Matrix</span><span class="brand-short">LS2 · Matrix</span></strong><span id="connection" class="status offline">未连接</span></div>
     <button id="stop-all" class="danger compact">全部停止</button>
   </header>
   <main>
@@ -97,7 +97,16 @@
       <div class="card" id="macro-editor"><h3>编辑宏 <span id="macro-key" class="muted">未选择</span></h3><div class="grid2"><label>操作类型<select id="macro-action"></select></label><label>按键颜色<input id="macro-color" type="color" value="#7c5cff"></label></div><label>内容<textarea id="macro-value" rows="4" placeholder="CTRL+SHIFT+S / PLAY / 命令…"></textarea></label><div class="button-row"><button id="macro-save" class="primary">保存</button><button id="macro-test">测试执行</button><button id="macro-clear" class="danger">清除</button></div></div>
     </section>
     <section id="tab-settings" class="tab">
-      <div class="card"><div class="card-title"><h3>Launchpad 设备</h3><button id="device-refresh">刷新</button></div><label>型号<select id="device-model"></select></label><label>MIDI 输入<select id="device-input"></select></label><label>MIDI 输出<select id="device-output"></select></label><div class="button-row"><button id="device-connect" class="primary">连接设备</button><button id="device-test">灯光测试</button></div></div>
+      <div class="card">
+        <div class="card-title"><div><span class="eyebrow">Matrix Canvas</span><h3>多 Launchpad 画布</h3></div><button id="device-refresh">刷新端口</button></div>
+        <p class="muted">为每台设备设置编号、相对位置和功能。扩展模式会拼成更大的频谱或像素视频画布；独立模式允许各设备同时运行不同功能。</p>
+        <label class="switch-row"><input id="multi-enabled" type="checkbox"><span>启用多设备联动</span></label>
+        <label>联动方式<select id="link-mode"></select></label>
+        <div id="device-layout" class="device-layout"></div>
+        <div id="device-list" class="device-list"></div>
+        <div class="button-row"><button id="device-add">＋ 添加设备</button><button id="device-apply" class="primary">应用并连接</button></div>
+        <button id="device-test" class="wide">全部设备灯光测试</button>
+      </div>
       <div class="card"><h3>连接信息</h3><p id="server-address" class="mono"></p><button id="forget-pin">忘记 PIN / 重新配对</button></div>
     </section>
   </main>

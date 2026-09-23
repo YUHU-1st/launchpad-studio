@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.0 - 2026-09-23 — Matrix
+
+- Added multi-Launchpad layouts with persistent device numbers, MIDI ports, models and X/Y tile positions.
+- Added extended-canvas, mirrored-output and independent-mode routing across multiple Launchpads.
+- Added native wide video pixels, performance bars and audio-spectrum rendering for extended layouts.
+- Added on-device numeric identification and per-device input routing so games and macros do not interfere with other assigned modes.
+- Added the complete Matrix device editor to the Android/LAN remote, including canvas preview, device add/remove, numbering, positioning, per-device modes, model and MIDI-port assignment, LED identification and connection.
+- Added abbreviated Windows MIDI-name detection for Launchpad X, Launchpad Mini MK3 and Launchpad Pro MK3.
+- Named the major release **Launchpad Studio 2 · Matrix** and centralized the desktop and Android version at `2.0.0`.
+
 ## 1.4.0 - 2026-09-13
 
 - Added a PIN-protected same-LAN Android remote for every non-game desktop mode, Launchpad device setup, global lighting controls, macros and presets.

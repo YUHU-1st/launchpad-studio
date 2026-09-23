@@ -18,7 +18,9 @@ from tkinter import colorchooser, messagebox, simpledialog, ttk
 from PIL import Image, ImageDraw
 import pystray
 
-from core.launchpad import ALL_PADS, MODELS, LaunchpadDevice
+from core.launchpad import ALL_PADS, MODELS, LaunchpadDevice, is_launchpad_port
+from core.multi_launchpad import (LINK_EXTEND, LINK_INDEPENDENT, LINK_MIRROR, LINK_MODES,
+                                  MODE_SOURCES, canvas_geometry, normalize_configs, number_frame, route_frames)
 from core.settings import AUDIO_DETAIL_DEFAULTS, VIDEO_DETAIL_DEFAULTS, Settings
 from core.macros import MacroExecutor
 from core.performance import PALETTES, PerformanceMonitor
@@ -34,6 +36,8 @@ from core.windows_media import SystemMediaBridge
 FROZEN = bool(getattr(sys,"frozen",False))
 BUNDLE_ROOT = Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parent))
 ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
+APP_VERSION = (BUNDLE_ROOT / "VERSION").read_text(encoding="utf-8").strip() if (BUNDLE_ROOT / "VERSION").exists() else "2.0.0"
+PRODUCT_TITLE = "Launchpad Studio 2 · Matrix"
 LOG_DIR = ROOT / "data"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(filename=LOG_DIR / "crash.log", level=logging.INFO,
@@ -57,7 +61,7 @@ def _single_instance():
     if ctypes.windll.kernel32.GetLastError()==183:
         find=ctypes.windll.user32.FindWindowW
         find.argtypes=[ctypes.c_wchar_p,ctypes.c_wchar_p]; find.restype=ctypes.c_void_p
-        hwnd=find(None,"Launchpad Studio") or find(None,"Launchpad Studio MK2")
+        hwnd=find(None,PRODUCT_TITLE) or find(None,"Launchpad Studio") or find(None,"Launchpad Studio MK2")
         if hwnd:
             ctypes.windll.user32.ShowWindow(hwnd,9); ctypes.windll.user32.SetForegroundWindow(hwnd)
         return False
@@ -125,7 +129,7 @@ class LaunchpadStudio(tk.Tk):
     def __init__(self):
         super().__init__()
         self.ui_events=queue.Queue(maxsize=24); self._closing=False
-        self.title("Launchpad Studio")
+        self.title(PRODUCT_TITLE)
         self.geometry("1280x820")
         self.minsize(1060, 700)
         self.configure(bg=BG)
@@ -138,10 +142,14 @@ class LaunchpadStudio(tk.Tk):
             self.settings_store.save()
         initial_model=self.settings_store.data.get("launchpad_model","auto")
         self.lp = LaunchpadDevice(self._hardware_pad, initial_model if initial_model != "auto" else "mk2")
+        self.launchpads={"lp1":self.lp}
+        self.multi_cfg=self.settings_store.data["multi_launchpad"]
+        self.mode_frames={}
+        self.active_modes=set()
         self._param_save_job=None; self._settings_save_job=None; self._parameter_clipboard=None
         self.macro_exec = MacroExecutor()
         self.performance = PerformanceMonitor()
-        self.video = VideoPlayer(self.submit_frame, self.set_status, self._video_progress, self._video_finished)
+        self.video = VideoPlayer(lambda frame:self.submit_frame(frame,"视频播放"), self.set_status, self._video_progress, self._video_finished)
         self.music = None
         self.live = None
         self.weather=WeatherService(); self.weather_data=None
@@ -201,7 +209,7 @@ class LaunchpadStudio(tk.Tk):
 
     def _build_ui(self):
         top = tk.Frame(self, bg=BG, height=72); top.pack(fill="x", padx=24, pady=(16,8)); top.pack_propagate(False)
-        ttk.Label(top, text="Launchpad Studio", style="Title.TLabel").pack(side="left", pady=14)
+        ttk.Label(top, text=PRODUCT_TITLE, style="Title.TLabel").pack(side="left", pady=14)
         self.status_dot = tk.Label(top, text="●", bg=BG, fg=BAD, font=("Segoe UI", 13)); self.status_dot.pack(side="left", padx=(18,5))
         self.device_status = tk.Label(top, text="未连接", bg=BG, fg=MUTED, font=("Segoe UI", 9)); self.device_status.pack(side="left")
         ttk.Button(top, text="设备设置", command=self._device_dialog).pack(side="right", pady=12)
@@ -305,12 +313,22 @@ class LaunchpadStudio(tk.Tk):
         if self.music and music_analysis:
             with self.music.lock:music_pos=float(self.music.cursor/music_analysis.sr)
         return {
-            "version":1,
-            "mode":self.mode,"active_mode":self.active_mode,"active_utility":self.active_utility,
+            "version":1,"app_version":APP_VERSION,"product_name":PRODUCT_TITLE,
+            "mode":self.mode,"active_mode":self.active_mode,"active_modes":sorted(self.active_modes),"active_utility":self.active_utility,
             "status":self.status_var.get(),
-            "launchpad":{"connected":self.lp.connected,"model":self.lp.model.name,"model_key":self.lp.model.key,
+            "launchpad":{"connected":any(device.connected for device in self.launchpads.values()),"model":self.lp.model.name,"model_key":self.lp.model.key,
                          "models":[{"key":"auto","name":"自动识别"}]+[{"key":m.key,"name":m.name} for m in MODELS],
-                         "inputs":list(getattr(self,"midi_inputs",[])),"outputs":list(getattr(self,"midi_outputs",[]))},
+                         "inputs":list(getattr(self,"midi_inputs",[])),"outputs":list(getattr(self,"midi_outputs",[])),
+                         "count":sum(device.connected for device in self.launchpads.values()),
+                         "multi_enabled":bool(self.multi_cfg.get("enabled",False)),
+                         "link_mode":self.multi_cfg.get("link_mode",LINK_EXTEND),
+                         "link_modes":list(LINK_MODES),"mode_sources":list(MODE_SOURCES),
+                         "devices":[{"id":item.get("id"),"number":item.get("number"),"x":item.get("x",0),"y":item.get("y",0),
+                                     "mode":item.get("mode","性能监控"),"model":item.get("model","auto"),
+                                     "input":item.get("input",""),"output":item.get("output",""),
+                                     "input_index":item.get("input_index",-1),"output_index":item.get("output_index",-1),
+                                     "connected":bool(self.launchpads.get(str(item.get("id"))) and self.launchpads[str(item.get("id"))].connected)}
+                                    for item in self.multi_cfg.get("devices",[])]},
             "global":{"palette":self.palette_var.get(),"palettes":list(PALETTES),"brightness":round(self.brightness.get()),
                       "custom_color":self.custom_color,"macro_control":bool(self.settings_store.data.get("macro_control_enabled",False))},
             "performance":dict(self.last_perf_stats),
@@ -369,7 +387,7 @@ class LaunchpadStudio(tk.Tk):
         try:
             if action=="app.stop":self._stop_all()
             elif action=="app.blackout":self._stop_all_and_clear()
-            elif action=="app.test_lights":self._test_lights() if self.lp.connected else self.set_status("Launchpad 尚未连接")
+            elif action=="app.test_lights":self._test_lights() if any(device.connected for device in self.launchpads.values()) else self.set_status("Launchpad 尚未连接")
             elif action=="mode.show" and value in self.mode_buttons:self._show_mode(value)
             elif action=="global.palette" and value in PALETTES:
                 self.palette_var.set(value); self._palette_changed()
@@ -392,6 +410,8 @@ class LaunchpadStudio(tk.Tk):
             elif action.startswith("utility."):self._remote_utility(action[8:],value)
             elif action.startswith("preset."):self._remote_preset(action[7:],value)
             elif action=="device.refresh":self._refresh_midi(); self.set_status("MIDI 设备列表已刷新")
+            elif action=="device.multi.apply":self._remote_multi_apply(value)
+            elif action=="device.identify":self._remote_identify(value)
             elif action=="device.connect":self._remote_connect(value)
         except Exception as exc:
             logging.warning("Remote command failed: %s",action,exc_info=True); self.set_status(f"手机遥控命令失败：{exc}")
@@ -411,12 +431,12 @@ class LaunchpadStudio(tk.Tk):
         if action not in ["热键","输入文字","打开文件/程序","打开网址","执行命令","PowerShell","媒体控制","按键序列","鼠标操作","系统操作","设置音量","组合动作"]:raise ValueError("不支持的宏类型")
         if not (len(color)==7 and color.startswith("#")):color="#7c5cff"
         self.settings_store.data["macros"][self._macro_key(*xy)]={"action":action,"value":macro_value,"color":color}; self.settings_store.save()
-        if self.active_mode=="宏按键":self._render_macro_profile()
+        if "宏按键" in self.active_modes:self._render_macro_profile()
 
     def _remote_macro_clear(self,value):
         xy=self._remote_xy(value); macros=self.settings_store.data["macros"]
         macros.pop(self._macro_key(*xy),None); macros.pop(str(self.lp.pad_id(*xy)),None); self.settings_store.save()
-        if self.active_mode=="宏按键":self._render_macro_profile()
+        if "宏按键" in self.active_modes:self._render_macro_profile()
 
     def _remote_video(self,command,value):
         self._remote_show("视频播放")
@@ -512,6 +532,28 @@ class LaunchpadStudio(tk.Tk):
         self.lp.connect(self.midi_inputs.index(in_name),self.midi_outputs.index(out_name),model)
         self.settings_store.data["launchpad_model"]=model; self.settings_store.save(); self._connected_ui()
 
+    def _remote_multi_apply(self,value):
+        if not isinstance(value,dict):raise ValueError("多设备参数错误")
+        link_mode=str(value.get("link_mode",LINK_EXTEND))
+        if link_mode not in LINK_MODES:raise ValueError("不支持的联动方式")
+        raw_devices=value.get("devices")
+        self.midi_inputs,self.midi_outputs=self.lp.devices()
+        configs=normalize_configs(raw_devices,self.midi_inputs,self.midi_outputs,{"auto",*(model.key for model in MODELS)},link_mode)
+        enabled=bool(value.get("enabled",False) and len(configs)>1)
+        self.multi_cfg.update(enabled=enabled,link_mode=link_mode,devices=configs)
+        self.settings_store.data["launchpad_model"]=configs[0]["model"]; self.settings_store.save()
+        complete=self._connect_launchpad_configs(configs if enabled else configs[:1],silent=True)
+        self._global_visual_update(); self._redispatch_frames()
+        self.set_status(f"手机端已应用 {len(configs) if enabled else 1} 台 Launchpad · {link_mode}" if complete else "多设备配置已保存，部分 MIDI 端口连接失败")
+
+    def _remote_identify(self,value):
+        device_id=str(value.get("id","")) if isinstance(value,dict) else str(value or "")
+        item=next((row for row in self.multi_cfg.get("devices",[]) if str(row.get("id"))==device_id),None)
+        device=self.launchpads.get(device_id)
+        if not item or not device or not device.connected:raise ValueError("设备尚未连接")
+        device.set_frame(number_frame(item.get("number",1)),force=True); self.after(1800,self._redispatch_frames)
+        self.set_status(f"正在用灯光显示 LP {item.get('number',1)}")
+
     def _macro_control_switch(self,parent=None):
         parent=parent or self.page
         self.macro_control_var=tk.BooleanVar(value=self.settings_store.data.get("macro_control_enabled",False))
@@ -559,14 +601,14 @@ class LaunchpadStudio(tk.Tk):
         self.temp_hint=tk.Label(self.page,text="部分 CPU/主板传感器需要管理员权限",bg=BG,fg="#5f687c",font=("Segoe UI",8)); self.temp_hint.pack(anchor="w",pady=(3,2))
         ttk.Button(self.page,text="以管理员权限重启读取完整温度",command=self._restart_admin).pack(fill="x",pady=(3,6))
         ttk.Button(self.page,text="开始实时监控",style="Accent.TButton",command=self._start_perf).pack(fill="x",pady=(6,6))
-        ttk.Button(self.page,text="停止",command=self._stop_all).pack(fill="x")
+        ttk.Button(self.page,text="停止",command=lambda:self._stop_mode("性能监控",True)).pack(fill="x")
 
     def _start_perf(self):
         self._activate_mode("性能监控")
         self.running_perf=True; self.set_status("性能监控运行中 · 2 Hz"); self._perf_tick()
 
     def _perf_tick(self):
-        if not self.running_perf or self.active_mode!="性能监控": return
+        if not self.running_perf or "性能监控" not in self.active_modes: return
         stats=self.performance.sample()
         self.last_perf_stats=stats
         if self.mode=="性能监控":
@@ -580,7 +622,7 @@ class LaunchpadStudio(tk.Tk):
                     l.configure(text=f"{v:.1f} °C",fg=color)
                 else:
                     l.configure(text="需权限 / 无传感器",fg=MUTED)
-        self.apply_frame(self.performance.frame(stats,self.palette_var.get(),self.brightness.get()/100))
+        self.apply_frame(self.performance.frame(stats,self.palette_var.get(),self.brightness.get()/100,self._output_size("性能监控")),"性能监控")
         self.after(500,self._perf_tick)
 
     def _restart_admin(self):
@@ -607,7 +649,9 @@ class LaunchpadStudio(tk.Tk):
         macro_row=tk.Frame(self.page,bg=BG); macro_row.pack(fill="x")
         ttk.Button(macro_row,text="测试执行",command=self._test_macro).pack(side="left",expand=True,fill="x")
         ttk.Button(macro_row,text="清除当前按键",command=self._clear_macro).pack(side="left",expand=True,fill="x",padx=(5,0))
-        ttk.Button(self.page,text="启用宏按键灯光",command=self._start_macros).pack(fill="x",pady=(12,0))
+        macro_mode_row=tk.Frame(self.page,bg=BG); macro_mode_row.pack(fill="x",pady=(12,0))
+        ttk.Button(macro_mode_row,text="启用宏按键灯光",command=self._start_macros).pack(side="left",expand=True,fill="x")
+        ttk.Button(macro_mode_row,text="停止",command=lambda:self._stop_mode("宏按键",True)).pack(side="left",fill="x",padx=(5,0))
         self._load_macro_form(*self.selected_pad)
 
     def _macro_key(self,x,y):
@@ -630,7 +674,7 @@ class LaunchpadStudio(tk.Tk):
     def _save_macro(self):
         key=self._macro_key(*self.selected_pad); self.settings_store.data["macros"][key]={"action":self.action_var.get(),"value":self.macro_value.get().strip(),"color":self.macro_color}
         self.settings_store.save()
-        if self.active_mode=="宏按键":self._render_macro_profile()
+        if "宏按键" in self.active_modes:self._render_macro_profile()
         self.set_status(f"按键 {key} 已保存")
 
     def _test_macro(self):
@@ -643,7 +687,7 @@ class LaunchpadStudio(tk.Tk):
         macros=self.settings_store.data["macros"]; macros.pop(key,None)
         macros.pop(str(self.lp.pad_id(*self.selected_pad)),None)
         self.settings_store.save(); self.action_var.set("热键"); self.macro_value.set(""); self.macro_color="#7c5cff"
-        if self.active_mode=="宏按键":self._render_macro_profile()
+        if "宏按键" in self.active_modes:self._render_macro_profile()
         self.set_status(f"按键 {key} 已清除")
 
     def _start_macros(self):
@@ -655,7 +699,7 @@ class LaunchpadStudio(tk.Tk):
             m=self._macro_get(*xy)
             if m:
                 h=m.get("color","#7c5cff").lstrip("#"); frame[xy]=tuple(int(h[i:i+2],16) for i in (0,2,4))
-        self.apply_frame(frame)
+        self.apply_frame(frame,"宏按键")
 
     def _page_video(self):
         self._page_title("视频像素播放器","播放列表、拖动定位、变速、循环与实时像素滤镜。")
@@ -686,7 +730,7 @@ class LaunchpadStudio(tk.Tk):
         self._parameter_scale("输出帧率",self.video_fps,5,30,lambda:self._update_video_effect(),".0f")
         for name,label,value,lo,hi in [("saturation","饱和度",1.25,0,2),("contrast","对比度",1.0,.2,2.5),("gamma","伽马",1.0,.25,2.5),("edge_threshold","边缘阈值",70,10,180)]:
             var=tk.DoubleVar(value=saved.get(name,value)); self.video_vars[name]=var; self._parameter_scale(label,var,lo,hi,lambda:self._update_video_effect(),".2f" if hi<10 else ".0f")
-        ttk.Button(self.page,text="停止",command=self._stop_all).pack(fill="x",pady=(10,18))
+        ttk.Button(self.page,text="停止",command=lambda:self._stop_mode("视频播放",True)).pack(fill="x",pady=(10,18))
 
     def _choose_video(self):
         paths=self._pick_files("添加视频","视频文件|*.mp4;*.avi;*.mov;*.mkv;*.webm|所有文件|*.*")
@@ -703,7 +747,7 @@ class LaunchpadStudio(tk.Tk):
         self.video_path=self.video_playlist[self.video_index]
         self.video_list.selection_clear(0,"end"); self.video_list.selection_set(self.video_index); self.video_list.see(self.video_index)
         params=self._video_params(); self.video.start(self.video_path,self.video_fps.get(),self.brightness.get()/100,
-              params["saturation"],self._rate(self.video_rate.get()),0,self.video_effect.get(),params)
+              params["saturation"],self._rate(self.video_rate.get()),0,self.video_effect.get(),params,self._output_size("视频播放"))
         self.video_pause_btn.configure(text="⏸ 暂停")
 
     def _clear_video_list(self):
@@ -744,7 +788,8 @@ class LaunchpadStudio(tk.Tk):
         h=self.custom_color.lstrip("#"); p["tint"]=tuple(int(h[i:i+2],16) for i in (0,2,4)); return p
 
     def _update_video_effect(self):
-        if hasattr(self,"video_effect"):self.video.set_effect(self.video_effect.get(),self._video_params())
+        if hasattr(self,"video_effect"):
+            self.video.set_effect(self.video_effect.get(),self._video_params()); self.video.set_output_size(self._output_size("视频播放"))
         self._schedule_param_save("video")
 
     def _page_music(self):
@@ -765,7 +810,7 @@ class LaunchpadStudio(tk.Tk):
         self.music_style=tk.StringVar(value=saved.get("style","频谱")); style=ttk.Combobox(self.page,textvariable=self.music_style,state="readonly",values=self._visual_styles()); style.pack(fill="x"); style.bind("<<ComboboxSelected>>",lambda _e:self._update_music_visual())
         self._build_preset_controls("music")
         self.music_visual_vars=self._build_visual_parameters("music",lambda:self._update_music_visual())
-        ttk.Button(self.page,text="停止",command=self._stop_all).pack(fill="x",pady=(10,18))
+        ttk.Button(self.page,text="停止",command=lambda:self._stop_mode("音乐演示",True)).pack(fill="x",pady=(10,18))
 
     def _choose_audio(self):
         paths=self._pick_files("添加音频","音频文件|*.wav;*.mp3;*.ogg;*.flac;*.aiff|所有文件|*.*")
@@ -777,7 +822,7 @@ class LaunchpadStudio(tk.Tk):
         p=self.audio_playlist[self.audio_index]; self.audio_path=p; self.analysis_label.configure(text="正在分析…")
         def work():
             try:
-                if not self.music:self.music=MusicShow(self.submit_frame,self.set_status,self._audio_progress,self._audio_finished)
+                if not self.music:self.music=MusicShow(lambda frame:self.submit_frame(frame,"音乐演示"),self.set_status,self._audio_progress,self._audio_finished)
                 a=self.music.analyse(p); self.after(0,lambda:self.analysis_label.configure(text=f"BPM {a.bpm}  ·  {a.mood}  ·  {a.genre}\n能量 {a.energy*100:.0f}%"))
             except Exception as e:self.after(0,lambda err=str(e):self.analysis_label.configure(text=f"分析失败：{err}"))
         threading.Thread(target=work,daemon=True).start()
@@ -789,10 +834,10 @@ class LaunchpadStudio(tk.Tk):
         self._activate_mode("音乐演示")
         self.audio_path=self.audio_playlist[self.audio_index]; self.audio_list.selection_clear(0,"end"); self.audio_list.selection_set(self.audio_index); self.audio_list.see(self.audio_index)
         try:
-            if not self.music:self.music=MusicShow(self.submit_frame,self.set_status,self._audio_progress,self._audio_finished)
+            if not self.music:self.music=MusicShow(lambda frame:self.submit_frame(frame,"音乐演示"),self.set_status,self._audio_progress,self._audio_finished)
             a=self.music.analyse(self.audio_path); self.analysis_label.configure(text=f"BPM {a.bpm}  ·  {a.mood}  ·  {a.genre}\n能量 {a.energy*100:.0f}%")
             self.music.set_volume(self.audio_volume.get()/100)
-            self.music.start(self.audio_path,self.music_style.get(),self.palette_var.get(),self.brightness.get()/100,self._visual_params(self.music_visual_vars),0,self._rate(self.audio_rate.get()),self.audio_loop.get()=="单曲循环")
+            self.music.start(self.audio_path,self.music_style.get(),self.palette_var.get(),self.brightness.get()/100,self._visual_params(self.music_visual_vars),0,self._rate(self.audio_rate.get()),self.audio_loop.get()=="单曲循环",self._output_size("音乐演示"))
             self.audio_pause_btn.configure(text="⏸ 暂停")
         except Exception as e:messagebox.showerror("音频播放失败",str(e))
 
@@ -832,7 +877,7 @@ class LaunchpadStudio(tk.Tk):
         if self.music and self.audio_duration:self.music.seek(self.audio_progress.get()/1000*self.audio_duration)
 
     def _update_music_visual(self):
-        if self.music and hasattr(self,"music_visual_vars"):self.music.set_visual(self.music_style.get(),self.palette_var.get(),self.brightness.get()/100,self._visual_params(self.music_visual_vars))
+        if self.music and hasattr(self,"music_visual_vars"):self.music.set_visual(self.music_style.get(),self.palette_var.get(),self.brightness.get()/100,self._visual_params(self.music_visual_vars),self._output_size("音乐演示"))
         self._schedule_param_save("music")
 
     def _music_volume_changed(self):
@@ -1032,19 +1077,19 @@ class LaunchpadStudio(tk.Tk):
         self.live_visual_vars=self._build_visual_parameters("live",lambda:self._update_live_visual())
         latency=self._card(); tk.Label(latency,text="目标延迟",bg=PANEL2,fg=MUTED).pack(side="left"); tk.Label(latency,text="≈ 20–45 ms",bg=PANEL2,fg=GOOD).pack(side="right")
         ttk.Button(self.page,text="开始实时灯光",style="Accent.TButton",command=self._start_live).pack(fill="x",pady=(14,6))
-        ttk.Button(self.page,text="停止",command=self._stop_all).pack(fill="x")
+        ttk.Button(self.page,text="停止",command=lambda:self._stop_mode("实时拾音",True)).pack(fill="x")
 
     def _start_live(self):
         if not self.live_devices:return messagebox.showerror("没有输入设备","未发现可用的麦克风或回放输入设备。")
         idx=self.live_combo.current(); device=self.live_devices[max(0,idx)][0]
         try:
             self._activate_mode("实时拾音")
-            if not self.live:self.live=LiveAudio(self.submit_frame,self.set_status)
-            self.live.start(device,self.live_style.get(),self.palette_var.get(),self.brightness.get()/100,self._visual_params(self.live_visual_vars))
+            if not self.live:self.live=LiveAudio(lambda frame:self.submit_frame(frame,"实时拾音"),self.set_status)
+            self.live.start(device,self.live_style.get(),self.palette_var.get(),self.brightness.get()/100,self._visual_params(self.live_visual_vars),self._output_size("实时拾音"))
         except Exception as e:messagebox.showerror("拾音启动失败",str(e))
 
     def _update_live_visual(self):
-        if self.live and hasattr(self,"live_visual_vars"):self.live.set_visual(self.live_style.get(),self.palette_var.get(),self.brightness.get()/100,self._visual_params(self.live_visual_vars))
+        if self.live and hasattr(self,"live_visual_vars"):self.live.set_visual(self.live_style.get(),self.palette_var.get(),self.brightness.get()/100,self._visual_params(self.live_visual_vars),self._output_size("实时拾音"))
         self._schedule_param_save("live")
 
     def _live_device_changed(self):
@@ -1223,8 +1268,8 @@ class LaunchpadStudio(tk.Tk):
         self.after(225,lambda f=dict(base_frame),t=token:self._score_effect_step(t,f))
 
     def _score_effect_step(self,token,frame):
-        if token==self.score_effect_token and self.utility_running and self.active_mode=="工具与游戏":
-            self.apply_frame(frame)
+        if token==self.score_effect_token and self.utility_running and "工具与游戏" in self.active_modes:
+            self.apply_frame(frame,"工具与游戏")
 
     def _rhythm_score_overlay(self,frame):
         if time.monotonic()>=self.rhythm_score_effect_until:return frame
@@ -1237,7 +1282,7 @@ class LaunchpadStudio(tk.Tk):
         choice=self.utility_choice.get(); cfg=self.settings_store.data["utilities"]
         if choice in ("瀑布音游","环形音游") and (not self.rhythm_chart or self.rhythm_chart_key!=self._rhythm_key()):
             self._set_utility_info("谱面尚未生成完成，请稍候或点击重新生成谱面",choice); return
-        self._activate_mode("工具与游戏"); self._stop_utility(clear=False)
+        self._stop_utility(clear=False); self._activate_mode("工具与游戏")
         self.active_mode="工具与游戏"; self.active_utility=choice; self.utility_running=True; self.utility_phase=0
         if choice=="天气":
             city=self.weather_city.get().strip() or "北京"; cfg["weather_city"]=city; self.settings_store.save()
@@ -1275,7 +1320,7 @@ class LaunchpadStudio(tk.Tk):
             self.set_status("天气已更新")
 
     def _utility_tick(self):
-        if not self.utility_running or self.active_mode!="工具与游戏":return
+        if not self.utility_running or "工具与游戏" not in self.active_modes:return
         choice=self.active_utility; low,high=self._utility_colors(); now=datetime.now(); delay=500; scored=False
         if choice=="数字时钟":
             self._set_utility_info(now.strftime("%H:%M:%S"),choice); frame=clock_frame(now,self.utility_phase,low,high); delay=500
@@ -1308,7 +1353,7 @@ class LaunchpadStudio(tk.Tk):
             position=self._rhythm_position(); self.rhythm_game.update(position)
             frame=self._rhythm_score_overlay(self.rhythm_game.frame(position,low,high)); self._update_rhythm_scoreboard(choice); delay=33
             if not self.rhythm_game.running:self._finish_rhythm_game(choice,frame)
-        if time.monotonic()>=self.score_effect_until:self.apply_frame(frame)
+        if time.monotonic()>=self.score_effect_until:self.apply_frame(frame,"工具与游戏")
         self.utility_phase+=1
         if scored:self._play_score_effect(frame,self.snake.score); delay=max(delay,260)
         if self.utility_running:self.utility_job=self.after(delay,self._utility_tick)
@@ -1321,7 +1366,7 @@ class LaunchpadStudio(tk.Tk):
             self.focus_remaining=max(0,int(self.focus_deadline-time.monotonic()+.999)); self.focus_paused=True; self.set_status("专注计时已暂停")
 
     def _reset_focus(self):
-        if self.active_mode=="工具与游戏" and self.active_utility=="专注计时器":self._stop_utility(clear=True)
+        if "工具与游戏" in self.active_modes and self.active_utility=="专注计时器":self._stop_utility(clear=True)
         self.focus_remaining=max(1,int(self.focus_minutes.get()))*60
         if hasattr(self,"utility_info"):self.utility_info.configure(text=f"{self.focus_remaining//60:02d}:00")
 
@@ -1351,12 +1396,12 @@ class LaunchpadStudio(tk.Tk):
         self.settings_store.data["utilities"][key]=high; self.settings_store.save(); self.utility_running=False
         if frame is None:
             low,high_color=self._utility_colors(); frame=self.rhythm_game.frame(self._rhythm_position(),low,high_color)
-        self.apply_frame(frame)
+        self.apply_frame(frame,"工具与游戏")
         if self.rhythm_audio:self.rhythm_audio.stop()
         self.set_status(f"{choice}结束 · 得分 {self.rhythm_game.score}")
 
     def _stop_utility(self,clear=False):
-        was_active=self.active_mode=="工具与游戏"
+        was_active="工具与游戏" in self.active_modes
         self.utility_running=False
         if self.utility_job:
             try:self.after_cancel(self.utility_job)
@@ -1365,11 +1410,12 @@ class LaunchpadStudio(tk.Tk):
         if self.rhythm_audio:self.rhythm_audio.stop()
         self.active_utility=None; self.score_effect_token+=1
         if was_active:
-            self.active_mode=None
-            if clear:self.apply_frame({xy:(0,0,0) for xy in ALL_PADS}); self.set_status("工具/游戏已停止")
+            self.active_modes.discard("工具与游戏"); self.mode_frames.pop("工具与游戏",None)
+            if self.active_mode=="工具与游戏":self.active_mode=next(iter(self.active_modes),None)
+            if clear:self.apply_frame({xy:(0,0,0) for xy in ALL_PADS},"工具与游戏"); self.mode_frames.pop("工具与游戏",None); self.set_status("工具/游戏已停止")
 
     def _utility_key(self,event):
-        if self.active_mode!="工具与游戏" or not self.utility_running or self.active_utility!="贪吃蛇":return
+        if "工具与游戏" not in self.active_modes or not self.utility_running or self.active_utility!="贪吃蛇":return
         direction={"Left":(-1,0),"Up":(0,-1),"Down":(0,1),"Right":(1,0)}.get(event.keysym)
         if direction:self.snake.steer(direction)
 
@@ -1384,7 +1430,7 @@ class LaunchpadStudio(tk.Tk):
                 self.snake.steer((1 if dx>0 else -1,0) if abs(dx)>abs(dy) else (0,1 if dy>0 else -1))
         elif choice=="打地鼠" and 0<=x<8 and 1<=y<=8:
             hit=self.mole.hit((x,y)); self.set_status("命中！" if hit else "没有打中")
-            high_score=self._update_game_scoreboard(choice); self.apply_frame(self.mole.frame())
+            high_score=self._update_game_scoreboard(choice); self.apply_frame(self.mole.frame(),"工具与游戏")
             if hit:self._play_score_effect(self.mole.frame(),self.mole.score)
             if not self.mole.running:
                 if self.utility_job:
@@ -1403,23 +1449,26 @@ class LaunchpadStudio(tk.Tk):
             result=self.rhythm_game.hit((x,y),self._rhythm_position())
             low,high=self._utility_colors(); frame=self.rhythm_game.frame(self._rhythm_position(),low,high)
             if result and result!="miss":self.rhythm_score_effect_until=time.monotonic()+.25
-            self.apply_frame(self._rhythm_score_overlay(frame)); self._update_rhythm_scoreboard(choice)
+            self.apply_frame(self._rhythm_score_overlay(frame),"工具与游戏"); self._update_rhythm_scoreboard(choice)
             self.set_status({"perfect":"PERFECT！","great":"GREAT！","good":"GOOD！","miss":"MISS"}.get(result,"请按亮起的目标琴键"))
 
     def _canvas_pad(self,x,y):
         if self.mode=="宏按键":self._load_macro_form(x,y)
         elif self.mode=="工具与游戏":self._utility_pad(x,y)
 
-    def _hardware_pad(self,x,y,pressed,velocity):
-        self.after(0,lambda:self._handle_pad_ui(x,y,pressed))
+    def _hardware_pad(self,x,y,pressed,velocity,device_id="lp1"):
+        self.after(0,lambda:self._handle_pad_ui(x,y,pressed,device_id))
 
-    def _handle_pad_ui(self,x,y,pressed):
+    def _handle_pad_ui(self,x,y,pressed,device_id="lp1"):
         if not pressed:return
         self.pad_canvas.selected=(x,y); self.pad_canvas.draw()
         games=("贪吃蛇","打地鼠","瀑布音游","环形音游")
-        if self.active_mode=="工具与游戏" and self.active_utility in games:
+        device_mode=self.active_mode
+        if self.multi_cfg.get("enabled") and self.multi_cfg.get("link_mode")==LINK_INDEPENDENT:
+            device_mode=next((item.get("mode") for item in self._layout_configs() if str(item.get("id"))==str(device_id)),device_mode)
+        if device_mode=="工具与游戏" and "工具与游戏" in self.active_modes and self.active_utility in games:
             self._utility_pad(x,y)
-        elif self.active_mode=="宏按键" or self.settings_store.data.get("macro_control_enabled",False):
+        elif device_mode=="宏按键" or self.settings_store.data.get("macro_control_enabled",False):
             macro=self._macro_get(x,y)
             if macro:self.macro_exec.execute(macro); self.set_status(f"已执行按键 {self.lp.pad_label(x,y)} · {macro['action']}")
 
@@ -1441,9 +1490,9 @@ class LaunchpadStudio(tk.Tk):
         self._settings_save_job=None; self.settings_store.save()
 
     def _global_visual_update(self):
-        if self.active_mode=="音乐演示" and hasattr(self,"music_visual_vars"):self._update_music_visual()
-        elif self.active_mode=="实时拾音" and hasattr(self,"live_visual_vars"):self._update_live_visual()
-        elif self.active_mode=="视频播放" and hasattr(self,"video_vars"):self._update_video_effect()
+        if "音乐演示" in self.active_modes and hasattr(self,"music_visual_vars"):self._update_music_visual()
+        if "实时拾音" in self.active_modes and hasattr(self,"live_visual_vars"):self._update_live_visual()
+        if "视频播放" in self.active_modes and hasattr(self,"video_vars"):self._update_video_effect()
 
     def _pick_global_color(self):
         value=colorchooser.askcolor(self.custom_color,title="整体主色")[1]
@@ -1452,70 +1501,208 @@ class LaunchpadStudio(tk.Tk):
 
     def _refresh_midi(self):
         self.midi_inputs,self.midi_outputs=self.lp.devices()
-        if not self.lp.connected:
-            ins=[i for i,n in enumerate(self.midi_inputs) if "launchpad" in n.casefold()]
-            outs=[i for i,n in enumerate(self.midi_outputs) if "launchpad" in n.casefold()]
+        if self.multi_cfg.get("enabled") and self.multi_cfg.get("devices"):
+            if not any(device.connected for device in self.launchpads.values()):
+                self._connect_launchpad_configs(self.multi_cfg["devices"],silent=True)
+        elif not self.lp.connected:
+            ins=[i for i,n in enumerate(self.midi_inputs) if is_launchpad_port(n)]
+            outs=[i for i,n in enumerate(self.midi_outputs) if is_launchpad_port(n)]
             if ins and outs:
                 try:self.lp.connect(ins[0],outs[0],self.settings_store.data.get("launchpad_model","auto")); self._connected_ui()
                 except Exception as e:self.set_status(f"自动连接失败：{e}")
 
+    @staticmethod
+    def _port_label(index,names):
+        return f"{index} · {names[index]}" if 0<=index<len(names) else ""
+
+    @staticmethod
+    def _port_index(item,key,names,used):
+        index=int(item.get(f"{key}_index",-1))
+        saved=str(item.get(key,""))
+        if 0<=index<len(names) and index not in used and (not saved or names[index]==saved):return index
+        return next((i for i,name in enumerate(names) if i not in used and name==saved),-1)
+
+    def _connect_launchpad_configs(self,configs,silent=False):
+        for device in {id(device):device for device in self.launchpads.values()}.values():device.disconnect(clear=False)
+        connected={}; errors=[]; used_inputs=set(); used_outputs=set()
+        for index,item in enumerate(sorted(configs,key=lambda row:int(row.get("number",99)))):
+            device_id=str(item.get("id") or f"lp{index+1}")
+            in_index=self._port_index(item,"input",self.midi_inputs,used_inputs)
+            out_index=self._port_index(item,"output",self.midi_outputs,used_outputs)
+            if in_index<0 or out_index<0:
+                errors.append(f"LP{item.get('number',index+1)}：MIDI 端口不存在"); continue
+            device=self.lp if not connected else LaunchpadDevice()
+            device.on_press=lambda x,y,pressed,velocity,did=device_id:self._hardware_pad(x,y,pressed,velocity,did)
+            try:
+                device.connect(in_index,out_index,str(item.get("model","auto")))
+                item.update(id=device_id,input=self.midi_inputs[in_index],output=self.midi_outputs[out_index],
+                            input_index=in_index,output_index=out_index)
+                connected[device_id]=device; used_inputs.add(in_index); used_outputs.add(out_index)
+            except Exception as exc:errors.append(f"LP{item.get('number',index+1)}：{exc}")
+        if connected:
+            self.launchpads=connected; self.lp=next(iter(connected.values()))
+            if hasattr(self,"pad_canvas"):self.pad_canvas.launchpad=self.lp
+            self._connected_ui()
+        else:self.launchpads={"lp1":self.lp}
+        if errors and not silent:messagebox.showwarning("部分设备未连接","\n".join(errors),parent=self)
+        return not errors
+
     def _midi_watchdog(self):
         if self._closing:return
-        if not self.lp.connected:
+        if not any(device.connected for device in self.launchpads.values()):
             try:self._refresh_midi()
             except Exception:logging.debug("MIDI reconnect check failed",exc_info=True)
         self.after(3000,self._midi_watchdog)
 
     def _device_dialog(self):
-        self._refresh_midi(); win=tk.Toplevel(self); win.title("MIDI 设备"); win.geometry("430x350"); win.configure(bg=BG); win.transient(self); win.grab_set()
-        tk.Label(win,text="Launchpad MIDI 连接",bg=BG,fg=TEXT,font=("Segoe UI Semibold",15)).pack(anchor="w",padx=20,pady=(18,14))
-        model_values=["自动识别"]+[m.name for m in MODELS]
-        saved_key=self.settings_store.data.get("launchpad_model","auto")
-        modelvar=tk.StringVar(value="自动识别" if saved_key=="auto" else next((m.name for m in MODELS if m.key==saved_key),"自动识别"))
-        tk.Label(win,text="设备型号",bg=BG,fg=MUTED).pack(anchor="w",padx=20); ttk.Combobox(win,textvariable=modelvar,values=model_values,state="readonly").pack(fill="x",padx=20,pady=(3,10))
-        tk.Label(win,text="输入端口",bg=BG,fg=MUTED).pack(anchor="w",padx=20); invar=tk.StringVar(value=next((n for n in self.midi_inputs if "Launchpad" in n),self.midi_inputs[0] if self.midi_inputs else "")); inc=ttk.Combobox(win,textvariable=invar,values=self.midi_inputs,state="readonly"); inc.pack(fill="x",padx=20,pady=(3,10))
-        tk.Label(win,text="输出端口",bg=BG,fg=MUTED).pack(anchor="w",padx=20); outvar=tk.StringVar(value=next((n for n in self.midi_outputs if "Launchpad" in n),self.midi_outputs[0] if self.midi_outputs else "")); outc=ttk.Combobox(win,textvariable=outvar,values=self.midi_outputs,state="readonly"); outc.pack(fill="x",padx=20,pady=(3,14))
-        def connect():
-            key=next((m.key for m in MODELS if m.name==modelvar.get()),"auto")
-            try:
-                self.lp.connect(self.midi_inputs.index(invar.get()),self.midi_outputs.index(outvar.get()),key)
-                self.settings_store.data["launchpad_model"]=key; self.settings_store.save()
-                self._connected_ui(); win.destroy()
-            except Exception as e:messagebox.showerror("连接失败",str(e),parent=win)
-        ttk.Button(win,text="连接",style="Accent.TButton",command=connect).pack(fill="x",padx=20)
+        self.midi_inputs,self.midi_outputs=self.lp.devices()
+        win=tk.Toplevel(self); win.title("多 Launchpad 画布设置"); win.geometry("940x650"); win.minsize(820,570); win.configure(bg=BG); win.transient(self); win.grab_set()
+        draft=json.loads(json.dumps(self.multi_cfg.get("devices",[]),ensure_ascii=False))
+        if not draft:
+            ins=[i for i,n in enumerate(self.midi_inputs) if is_launchpad_port(n)]
+            outs=[i for i,n in enumerate(self.midi_outputs) if is_launchpad_port(n)]
+            if ins and outs:
+                input_index,output_index=ins[0],outs[0]
+                draft.append({"id":"lp1","number":1,"x":0,"y":0,"mode":"性能监控","model":"auto",
+                              "input":self.midi_inputs[input_index],"output":self.midi_outputs[output_index],
+                              "input_index":input_index,"output_index":output_index})
+        tk.Label(win,text="多 Launchpad 画布",bg=BG,fg=TEXT,font=("Segoe UI Semibold",16)).pack(anchor="w",padx=20,pady=(16,2))
+        tk.Label(win,text="像 Windows 多显示器一样编号并设置相对坐标。扩展会切分更大的画布；复制会显示同一画面；独立模式可同时运行不同功能。",bg=BG,fg=MUTED,wraplength=880,justify="left").pack(anchor="w",padx=20,pady=(0,12))
+        options=tk.Frame(win,bg=BG); options.pack(fill="x",padx=20)
+        enabled=tk.BooleanVar(value=bool(self.multi_cfg.get("enabled",len(draft)>1)))
+        link_mode=tk.StringVar(value=self.multi_cfg.get("link_mode",LINK_EXTEND))
+        ttk.Checkbutton(options,text="启用多设备联动",variable=enabled).pack(side="left")
+        tk.Label(options,text="联动方式",bg=BG,fg=MUTED).pack(side="left",padx=(25,6))
+        ttk.Combobox(options,textvariable=link_mode,state="readonly",values=LINK_MODES,width=12).pack(side="left")
+        preview=tk.Canvas(win,bg=PANEL2,height=155,highlightthickness=0); preview.pack(fill="x",padx=20,pady=12)
+        columns=("number","position","mode","model","input","output","state")
+        tree=ttk.Treeview(win,columns=columns,show="headings",height=7)
+        for key,label,width in (("number","编号",48),("position","位置",65),("mode","分配模式",90),("model","型号",115),("input","输入端口",170),("output","输出端口",170),("state","状态",70)):
+            tree.heading(key,text=label); tree.column(key,width=width,anchor="center" if key in ("number","position","state") else "w")
+        tree.pack(fill="both",expand=True,padx=20)
+        selected=tk.IntVar(value=0); number=tk.IntVar(value=1); xpos=tk.IntVar(value=0); ypos=tk.IntVar(value=0)
+        modevar=tk.StringVar(value="性能监控"); modelvar=tk.StringVar(value="自动识别"); invar=tk.StringVar(); outvar=tk.StringVar()
+        input_values=[self._port_label(i,self.midi_inputs) for i in range(len(self.midi_inputs))]
+        output_values=[self._port_label(i,self.midi_outputs) for i in range(len(self.midi_outputs))]
+        model_values=["自动识别"]+[model.name for model in MODELS]
+        def redraw():
+            for row in tree.get_children():tree.delete(row)
+            for index,item in enumerate(draft):
+                device=self.launchpads.get(str(item.get("id"))); state="已连接" if device and device.connected else "未连接"
+                model_name="自动识别" if item.get("model","auto")=="auto" else next((m.name for m in MODELS if m.key==item.get("model")),item.get("model"))
+                tree.insert("", "end", iid=str(index), values=(item.get("number"),f"{item.get('x',0)},{item.get('y',0)}",item.get("mode","性能监控"),model_name,item.get("input",""),item.get("output",""),state))
+            preview.delete("all")
+            if draft:
+                _,_,positions=canvas_geometry(draft); max_x=max(x for x,_ in positions.values()); max_y=max(y for _,y in positions.values())
+                cell=min(112,760/max(1,max_x+1),120/max(1,max_y+1)); total_w=(max_x+1)*cell; total_h=(max_y+1)*cell
+                ox=(max(100,preview.winfo_width())-total_w)/2; oy=(155-total_h)/2
+                for index,item in enumerate(draft):
+                    x,y=positions[str(item["id"])]; x1=ox+x*cell+5; y1=oy+y*cell+5; x2=x1+cell-10; y2=y1+cell-10
+                    preview.create_rectangle(x1,y1,x2,y2,fill="#252c3d",outline=ACCENT if index==selected.get() else "#4a536b",width=3)
+                    preview.create_text((x1+x2)/2,(y1+y2)/2,text=f"LP {item.get('number')}\n{item.get('mode','')}",fill=TEXT,font=("Segoe UI Semibold",10),justify="center")
+        def load(index):
+            if not draft:return
+            index=max(0,min(index,len(draft)-1)); selected.set(index); item=draft[index]
+            number.set(item.get("number",index+1)); xpos.set(item.get("x",0)); ypos.set(item.get("y",0)); modevar.set(item.get("mode","性能监控"))
+            modelvar.set("自动识别" if item.get("model","auto")=="auto" else next((m.name for m in MODELS if m.key==item.get("model")),"自动识别"))
+            invar.set(self._port_label(int(item.get("input_index",-1)),self.midi_inputs)); outvar.set(self._port_label(int(item.get("output_index",-1)),self.midi_outputs)); redraw()
+        tree.bind("<<TreeviewSelect>>",lambda _e:load(int(tree.selection()[0])) if tree.selection() else None)
+        form=tk.Frame(win,bg=BG); form.pack(fill="x",padx=20,pady=10)
+        for column,(label,var,widget) in enumerate((("编号",number,"spin"),("X",xpos,"spin"),("Y",ypos,"spin"),("设备模式",modevar,"mode"),("型号",modelvar,"model"),("输入",invar,"input"),("输出",outvar,"output"))):
+            box=tk.Frame(form,bg=BG); box.grid(row=0,column=column,sticky="ew",padx=(0,5)); tk.Label(box,text=label,bg=BG,fg=MUTED,font=("Segoe UI",8)).pack(anchor="w")
+            if widget=="spin":control=ttk.Spinbox(box,from_=-8 if label!="编号" else 1,to=8 if label!="编号" else 99,textvariable=var,width=5)
+            else:control=ttk.Combobox(box,textvariable=var,state="readonly",values={"mode":MODE_SOURCES,"model":model_values,"input":input_values,"output":output_values}[widget],width=13 if widget in ("mode","model") else 20)
+            control.pack(fill="x")
+            form.grid_columnconfigure(column,weight=2 if widget in ("input","output") else 1)
+        def save_row():
+            if not draft:return
+            input_index=int(invar.get().split(" · ",1)[0]) if " · " in invar.get() else -1; output_index=int(outvar.get().split(" · ",1)[0]) if " · " in outvar.get() else -1
+            if input_index<0 or output_index<0:return messagebox.showerror("端口未选择","请选择输入和输出 MIDI 端口。",parent=win)
+            item=draft[selected.get()]; item.update(number=int(number.get()),x=int(xpos.get()),y=int(ypos.get()),mode=modevar.get(),
+                model=next((m.key for m in MODELS if m.name==modelvar.get()),"auto"),input=self.midi_inputs[input_index],output=self.midi_outputs[output_index],input_index=input_index,output_index=output_index)
+            redraw(); tree.selection_set(str(selected.get()))
+        def add_row():
+            used={str(item.get("id")) for item in draft}; next_id=next(f"lp{i}" for i in range(1,100) if f"lp{i}" not in used); index=len(draft)
+            draft.append({"id":next_id,"number":index+1,"x":index,"y":0,"mode":"性能监控","model":"auto","input":"","output":"","input_index":-1,"output_index":-1}); enabled.set(True); load(index); tree.selection_set(str(index))
+        def remove_row():
+            if not draft:return
+            draft.pop(selected.get()); selected.set(max(0,min(selected.get(),len(draft)-1))); redraw(); load(selected.get()) if draft else None
+        def identify():
+            if not draft:return
+            item=draft[selected.get()]; device=self.launchpads.get(str(item.get("id")))
+            if not device or not device.connected:return messagebox.showinfo("设备未连接","请先应用并连接设备。",parent=win)
+            device.set_frame(number_frame(item.get("number",1)),force=True); self.after(1800,self._redispatch_frames)
+        buttons=tk.Frame(win,bg=BG); buttons.pack(fill="x",padx=20,pady=(0,14))
+        ttk.Button(buttons,text="更新选中设备",command=save_row).pack(side="left"); ttk.Button(buttons,text="＋ 添加设备",command=add_row).pack(side="left",padx=5); ttk.Button(buttons,text="移除",command=remove_row).pack(side="left"); ttk.Button(buttons,text="用灯光显示编号",command=identify).pack(side="left",padx=5)
+        def apply():
+            if not draft:return messagebox.showerror("没有设备","请至少添加一台 Launchpad。",parent=win)
+            save_row()
+            numbers=[int(item.get("number",0)) for item in draft]
+            if len(numbers)!=len(set(numbers)):return messagebox.showerror("编号重复","每台 Launchpad 必须使用不同编号。",parent=win)
+            inputs=[int(item.get("input_index",-1)) for item in draft]; outputs=[int(item.get("output_index",-1)) for item in draft]
+            if min(inputs+outputs)<0:return messagebox.showerror("端口未选择","请为每台 Launchpad 选择输入和输出端口。",parent=win)
+            if len(inputs)!=len(set(inputs)) or len(outputs)!=len(set(outputs)):return messagebox.showerror("端口重复","同一个 MIDI 端口不能分配给多台 Launchpad。",parent=win)
+            if link_mode.get()==LINK_EXTEND:
+                positions=[(int(item.get("x",0)),int(item.get("y",0))) for item in draft]
+                if len(positions)!=len(set(positions)):return messagebox.showerror("位置重叠","扩展画布中的设备位置不能重叠。",parent=win)
+            multi_enabled=bool(enabled.get() and len(draft)>1)
+            self.multi_cfg.update(enabled=multi_enabled,link_mode=link_mode.get(),devices=draft)
+            self.settings_store.save(); self._connect_launchpad_configs(draft if multi_enabled else draft[:1]); self._global_visual_update(); self._redispatch_frames(); win.destroy()
+        ttk.Button(buttons,text="应用并连接",style="Accent.TButton",command=apply).pack(side="right")
+        redraw(); load(0) if draft else None
 
     def _connected_ui(self):
         model=self.lp.model
-        self.status_dot.configure(fg=GOOD); self.device_status.configure(text=f"{model.name} 已连接",fg=GOOD)
+        count=sum(device.connected for device in self.launchpads.values())
+        self.status_dot.configure(fg=GOOD); self.device_status.configure(text=f"{count} 台 Launchpad 已连接" if count>1 else f"{model.name} 已连接",fg=GOOD)
         self.model_footer.configure(text=f"{model.name} · {len(model.pads)} LEDs")
         self.pad_canvas.colors={xy:(0,0,0) for xy in model.pads}; self.pad_canvas.selected=None; self.pad_canvas.draw()
-        self.set_status(f"真机已连接 · {len(model.pads)} LEDs · {model.name}")
+        self.set_status(f"已连接 {count} 台 Launchpad · {self.multi_cfg.get('link_mode',LINK_EXTEND)}" if count>1 else f"真机已连接 · {len(model.pads)} LEDs · {model.name}")
 
     def _test_lights(self):
-        if not self.lp.connected:return self._device_dialog()
-        self._activate_mode("灯光测试")
-        self.lp.test_pattern(); self.pad_canvas.set_frame(self.lp.colors); self.set_status("RGB 全键灯光测试")
+        devices=[device for device in self.launchpads.values() if device.connected]
+        if not devices:return self._device_dialog()
+        for device in devices:device.test_pattern()
+        self.pad_canvas.set_frame(self.lp.colors); self.set_status(f"{len(devices)} 台 Launchpad RGB 全键灯光测试")
 
-    def submit_frame(self,frame):
-        if threading.current_thread() is threading.main_thread():self.apply_frame(frame)
-        else:self._queue_ui(("frame",frame))
+    def _layout_configs(self):
+        if self.multi_cfg.get("enabled") and self.multi_cfg.get("devices"):return self.multi_cfg["devices"]
+        device_id=next((key for key,value in self.launchpads.items() if value is self.lp),"lp1")
+        return [{"id":device_id,"number":1,"x":0,"y":0,"mode":self.active_mode or self.mode}]
 
-    def apply_frame(self,frame):
-        adapted=dict(frame)
-        # Pro models add left and bottom control rows. Mirror the nearest content
-        # so every physical LED participates in every existing mode.
-        for x,y in self.lp.pads:
-            if (x,y) in adapted:continue
-            if x==-1:adapted[(x,y)]=frame.get((0,y),(0,0,0))
-            elif y==9:adapted[(x,y)]=frame.get((x,8),(0,0,0))
-            else:adapted[(x,y)]=(0,0,0)
-        adapted={xy:adapted.get(xy,(0,0,0)) for xy in self.lp.pads}
-        self.current_frame=adapted; self.pad_canvas.set_frame(adapted)
-        try:self.lp.set_frame(adapted)
-        except Exception as e:
-            logging.error("MIDI output failed",exc_info=True)
-            self.lp.disconnect(clear=False); self.status_dot.configure(fg=BAD); self.device_status.configure(text="连接中断 · 正在重试",fg=BAD)
-            self.set_status(f"MIDI 输出错误：{e}；将自动重连")
+    def _output_size(self,_source=None):
+        configs=self._layout_configs()
+        if self.multi_cfg.get("enabled") and self.multi_cfg.get("link_mode")==LINK_EXTEND:
+            width,height,_=canvas_geometry(configs); return width*8,height*8
+        return 8,8
+
+    def _redispatch_frames(self):
+        if not self.mode_frames:
+            for device in self.launchpads.values():
+                if device.connected:device.clear(force=True)
+            return
+        source=self.active_mode or next(reversed(self.mode_frames))
+        self.apply_frame(self.mode_frames[source],source)
+
+    def submit_frame(self,frame,source=None):
+        source=source or self.active_mode or self.mode
+        if threading.current_thread() is threading.main_thread():self.apply_frame(frame,source)
+        else:self._queue_ui(("frame",source,frame))
+
+    def apply_frame(self,frame,source=None):
+        source=source or self.active_mode or self.mode; self.mode_frames[source]=dict(frame)
+        configs=self._layout_configs(); pads={key:device.pads for key,device in self.launchpads.items() if device.connected}
+        link_mode=self.multi_cfg.get("link_mode",LINK_EXTEND) if self.multi_cfg.get("enabled") else LINK_MIRROR
+        routed=route_frames(configs,pads,self.mode_frames,link_mode,source)
+        primary_id=next((key for key,value in self.launchpads.items() if value is self.lp),None)
+        if primary_id in routed:
+            self.current_frame=routed[primary_id]; self.pad_canvas.set_frame(self.current_frame)
+        for device_id,adapted in routed.items():
+            try:self.launchpads[device_id].set_frame(adapted)
+            except Exception as exc:
+                logging.error("MIDI output failed for %s",device_id,exc_info=True)
+                self.launchpads[device_id].disconnect(clear=False); self.status_dot.configure(fg=BAD)
+                self.set_status(f"{device_id} MIDI 输出错误：{exc}；将自动重连")
 
     def set_status(self,text):
         if threading.current_thread() is threading.main_thread():self.status_var.set(text)
@@ -1531,26 +1718,26 @@ class LaunchpadStudio(tk.Tk):
             except queue.Full:pass
 
     def _drain_ui_events(self):
-        latest_frame=None; latest_video=None; latest_audio=None; latest_weather=None; weather_error=None
+        latest_frames={}; latest_video=None; latest_audio=None; latest_weather=None; weather_error=None
         try:
             for _ in range(30):
                 event=self.ui_events.get_nowait(); kind=event[0]
-                if kind=="frame":latest_frame=event[1]
+                if kind=="frame":latest_frames[event[1]]=event[2]
                 elif kind=="status":self.status_var.set(event[1])
                 elif kind=="video_progress":latest_video=event[1:]
                 elif kind=="audio_progress":latest_audio=event[1:]
-                elif kind=="video_finished" and self.active_mode=="视频播放":self._advance_video(1,True)
-                elif kind=="audio_finished" and self.active_mode=="音乐演示":self._advance_audio(1,True)
+                elif kind=="video_finished" and "视频播放" in self.active_modes:self._advance_video(1,True)
+                elif kind=="audio_finished" and "音乐演示" in self.active_modes:self._advance_audio(1,True)
                 elif kind=="weather_result":latest_weather=event[1]
                 elif kind=="weather_error":weather_error=event[1]
                 elif kind=="rhythm_chart":self._rhythm_chart_ready(*event[1:])
                 elif kind=="rhythm_error":self._rhythm_chart_failed(*event[1:])
-                elif kind=="rhythm_finished" and self.active_mode=="工具与游戏":self._finish_rhythm_game()
+                elif kind=="rhythm_finished" and "工具与游戏" in self.active_modes:self._finish_rhythm_game()
                 elif kind=="remote_command":self._handle_remote_command(event[1],event[2])
                 elif kind=="show_window":self._show_window()
                 elif kind=="quit_app":self._close()
         except queue.Empty:pass
-        if latest_frame is not None:self.apply_frame(latest_frame)
+        for source,frame in latest_frames.items():self.apply_frame(frame,source)
         if latest_video is not None:
             pos,duration=latest_video; self.video_duration=duration
             if self.mode=="视频播放" and hasattr(self,"video_progress"):
@@ -1568,21 +1755,36 @@ class LaunchpadStudio(tk.Tk):
         if not self._closing:self.after(16,self._drain_ui_events)
 
     def _activate_mode(self,name):
-        self.score_effect_token+=1; self.running_perf=False; self.video.stop()
-        if self.music:self.music.stop()
-        if self.live:self.live.stop()
-        self._stop_utility(clear=False); self.active_mode=name
+        independent=(self.multi_cfg.get("enabled") and self.multi_cfg.get("link_mode")==LINK_INDEPENDENT and len(self._layout_configs())>1)
+        if independent:self._stop_mode(name,False,False)
+        else:self._stop_all(False)
+        self.score_effect_token+=1; self.active_mode=name; self.active_modes.add(name)
 
-    def _stop_all(self):
+    def _stop_mode(self,name,clear=False,set_status=True):
+        if name=="性能监控":self.running_perf=False
+        elif name=="视频播放":self.video.stop()
+        elif name=="音乐演示" and self.music:self.music.stop()
+        elif name=="实时拾音" and self.live:self.live.stop()
+        elif name=="工具与游戏":self._stop_utility(clear=False)
+        self.active_modes.discard(name); self.mode_frames.pop(name,None)
+        if self.active_mode==name:self.active_mode=next(iter(self.active_modes),None)
+        if clear:
+            blank={xy:(0,0,0) for xy in ALL_PADS}; self.mode_frames[name]=blank; self.apply_frame(blank,name); self.mode_frames.pop(name,None)
+        if set_status:self.set_status(f"{name}已停止")
+
+    def _stop_all(self,set_status=True):
         self.running_perf=False; self.video.stop()
         if self.music:self.music.stop()
         if self.live:self.live.stop()
         self._stop_utility(clear=False)
-        self.active_mode=None; self.score_effect_token+=1
-        self.set_status("已停止")
+        self.active_mode=None; self.active_modes.clear(); self.mode_frames.clear(); self.score_effect_token+=1
+        if set_status:self.set_status("已停止")
 
     def _stop_all_and_clear(self):
-        self._stop_all(); self.apply_frame({xy:(0,0,0) for xy in ALL_PADS}); self.set_status("所有灯光功能已结束，Launchpad 已熄灯")
+        self._stop_all(False)
+        for device in self.launchpads.values():device.clear(force=True)
+        blank={xy:(0,0,0) for xy in self.lp.pads}; self.current_frame=blank; self.pad_canvas.set_frame(blank)
+        self.set_status("所有灯光功能已结束，全部 Launchpad 已熄灯")
 
     def _tray_image(self):
         image=Image.new("RGBA",(64,64),(11,13,18,255)); draw=ImageDraw.Draw(image)
@@ -1598,7 +1800,7 @@ class LaunchpadStudio(tk.Tk):
             pystray.MenuItem("打开可视化界面",lambda _i,_m:self._queue_ui(("show_window",)),default=True),
             pystray.MenuItem("完全退出程序",lambda _i,_m:self._queue_ui(("quit_app",)))
         )
-        self.tray_icon=pystray.Icon("LaunchpadStudio",self._tray_image(),"Launchpad Studio",menu)
+        self.tray_icon=pystray.Icon("LaunchpadStudio",self._tray_image(),PRODUCT_TITLE,menu)
         threading.Thread(target=self._run_tray,name="TrayIcon",daemon=True).start()
 
     def _run_tray(self):
@@ -1619,7 +1821,8 @@ class LaunchpadStudio(tk.Tk):
 
     def _close(self):
         if self._closing:return
-        self._closing=True; self._stop_all(); self.settings_store.data["brightness"]=round(self.brightness.get()); self.settings_store.save(); self.lp.disconnect()
+        self._closing=True; self._stop_all(); self.settings_store.data["brightness"]=round(self.brightness.get()); self.settings_store.save()
+        for device in {id(device):device for device in self.launchpads.values()}.values():device.disconnect()
         if self.remote_tick_job:
             try:self.after_cancel(self.remote_tick_job)
             except Exception:pass

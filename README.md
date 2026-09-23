@@ -1,10 +1,10 @@
-# Launchpad Studio
+# Launchpad Studio 2 · Matrix
 
 **中文** | [English](#english)
 
-面向 Novation Launchpad 全系列的 Windows 桌面控制中心：硬件监控、宏按键、音视频像素灯光、实时拾音、桌面工具与可游玩的灯光游戏全部集中在一个无终端窗口、可常驻托盘的软件中。
+面向 Novation Launchpad 全系列的 Windows 桌面控制中心。Matrix 大版本加入多台 Launchpad 的相对布局、扩展画布、复制联动和独立模式；硬件监控、宏按键、音视频像素灯光、实时拾音、桌面工具与可游玩的灯光游戏全部集中在一个无终端窗口、可常驻托盘的软件中。
 
-A Windows desktop control center for the Novation Launchpad family, combining hardware telemetry, macro pads, pixel video, music and live-audio lighting, desktop utilities, and playable LED games in one tray-ready application.
+A Windows desktop control center for the Novation Launchpad family. The Matrix major release adds relative multi-device layouts, extended canvases, mirrored output, and independent modes alongside hardware telemetry, macro pads, pixel video, music and live-audio lighting, desktop utilities, and playable LED games.
 
 <p align="center">
   <img src="docs/media/launchpad-studio-demo.gif" alt="Launchpad Studio running demo" width="900">
@@ -40,6 +40,12 @@ The overview covers performance, macros, video, music, live audio, clock/calenda
 
 手机端的 **Windows 媒体** 页面通过系统媒体会话控制网易云音乐、PotPlayer、AIMP 等兼容播放器，支持播放/暂停、上/下一曲、停止、循环、随机、实时拖动进度、系统音量、静音以及默认音频输出设备切换。播放器向 Windows 暴露的标题、歌手、专辑、封面和时间轴会持续同步；歌词会按歌曲元数据从 LRCLIB 获取并逐行同步。若播放器没有向 Windows 系统媒体接口暴露某项能力，对应控制可能不可用，但基础媒体键仍会作为播放/上下曲的后备方式。
 
+### 多 Launchpad 设置
+
+打开顶部 **设备设置**，为每台设备选择独立的 MIDI 输入、输出和型号，并设置编号及 X/Y 位置。点击 **用灯光显示编号** 会在对应实机上显示编号；选择 **扩展画布** 可按布局拼接更大的像素区域，选择 **复制画面** 可同步相同灯效，选择 **独立模式** 后可为每台设备指定功能，再分别进入相应页面点击开始。独立模式中的停止按钮只停止当前功能，顶部“全部停止并熄灯”仍会关闭所有设备。
+
+Android 客户端和手机网页的 **设备** 页面提供同一套 Matrix 编辑器：可预览相对布局、增删设备、设置编号与坐标、分配模式和型号、选择 MIDI 端口、用灯光识别实机，并直接应用连接配置。
+
 ### 主要功能
 
 - **性能与温度监控**：显示 CPU、内存、GPU、磁盘、网络和磁盘吞吐量，以及 CPU、GPU、主板和存储温度。
@@ -49,6 +55,7 @@ The overview covers performance, macros, video, music, live audio, clock/calenda
 - **音乐灯光秀**：离线分析 BPM、情绪、能量和风格，提供频谱、波形、涟漪、星云、火焰、隧道等多种灯效并与声音同步。
 - **实时拾音**：支持麦克风和 Windows WASAPI 系统回放，提供频率范围、响度范围、灵敏度、噪声阈值、速度和扩散等低延迟参数。
 - **参数与预设**：自动记忆上次设置，支持恢复默认、命名预设、最近预设，以及音乐、拾音和视频模式间复制粘贴兼容参数。
+- **多 Launchpad 画布**：可连接并编号多台 Launchpad，以 X/Y 坐标设置相对位置；支持扩展画布、复制画面和独立模式。扩展模式会生成原生宽幅频谱、性能灯柱和像素视频，独立模式可让各设备同时运行不同功能且按键输入互不干扰；“用灯光显示编号”可快速辨认实机。
 - **桌面工具**：数字时钟、日历、免密钥实时天气和专注计时器。
 - **解压游戏**：可调难度与自动关卡的穿墙贪吃蛇、打地鼠、得分庆祝灯效和实时计分板。
 - **自动谱面音游**：导入 WAV、MP3、OGG、FLAC 或 AIFF 后，软件预先识别节拍、瞬态和频段并自动生成谱面。瀑布音游与环形街机风格音游均支持简单/普通/困难、1–5 级音符速度、4–8 个琴键、暂停/继续、连击、判定、准确率和最高分。
@@ -143,7 +150,7 @@ The overview covers performance, macros, video, music, live audio, clock/calenda
 
 ### 源码运行与构建
 
-双击 `LaunchpadStudio.vbs` 或 `start.bat` 可静默准备环境并启动；`安装桌面快捷方式.bat` 用于创建桌面快捷方式，`build_exe.bat` 用于生成 Windows 分发包。
+双击 `LaunchpadStudio.vbs` 或 `start.bat` 可静默准备环境并启动；`安装桌面快捷方式.bat` 用于创建桌面快捷方式，`build_exe.bat` 用于只构建 Windows 程序。正式双端发布统一使用 `scripts/build_release.ps1`，版本号集中保存在根目录 `VERSION`。
 
 Android 客户端源码位于 `android/`，使用 Android SDK 35、JDK 17 和 Gradle/Android Gradle Plugin 构建：
 
@@ -153,6 +160,10 @@ gradle -p android assembleDebug
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1
 ```
 
 配置和预设保存在 `data/settings.json`，崩溃诊断写入 `data/crash.log` 与 `data/native_crash.log`。天气数据来自 [Open-Meteo](https://open-meteo.com/)，无需 API Key。
@@ -177,6 +188,12 @@ Launchpad Studio now hosts a PIN-protected LAN remote service. The Android clien
 
 The **Windows Media** view uses Windows system media sessions for compatible players such as NetEase Cloud Music, PotPlayer, and AIMP. It supports play/pause, previous/next, stop, repeat, shuffle, live seeking, system volume/mute, and switching the default Windows audio output. Title, artist, album, cover art, and timeline data are streamed to the phone; synchronized lyrics are resolved through LRCLIB when metadata is available. Open **Phone Remote** on the desktop to see the LAN URL and six-digit pairing PIN, then enter both in the release APK or a mobile browser on the same network.
 
+### Multi-Launchpad setup
+
+Open **Device Settings**, select a dedicated MIDI input/output and model for every unit, then assign its number and X/Y tile position. **Show Number on LEDs** identifies the physical unit. Use **Extended Canvas** for a larger pixel surface, **Mirror** for identical output, or **Independent Mode** to assign different functions and start them from their normal pages. In independent mode, each page's Stop button affects only that function; the header's Stop All and Black Out action still clears every device.
+
+The Android client and mobile web remote expose the same Matrix editor under **Devices**: preview the relative layout, add or remove units, edit numbers and coordinates, assign modes/models/MIDI ports, identify hardware with LED digits, and apply the connection directly from the phone.
+
 ### Highlights
 
 - **Performance and temperature monitoring:** CPU, memory, GPU, disk, network and storage throughput, plus CPU, GPU, motherboard and drive temperatures.
@@ -186,6 +203,7 @@ The **Windows Media** view uses Windows system media sessions for compatible pla
 - **Analyzed music shows:** offline BPM, mood, energy and style analysis with synchronized spectrum, waveform, ripple, nebula, flame, tunnel, and other visual styles.
 - **Low-latency live audio:** microphone and Windows WASAPI loopback capture with frequency, loudness, sensitivity, gate, speed, and spread controls.
 - **Persistent parameters and presets:** automatic restore, defaults, named and recent presets, plus compatible parameter copy/paste across music, live audio, and video.
+- **Multi-Launchpad canvas:** connect and number multiple units, place them on an X/Y tile grid, and choose extended, mirrored, or independent routing. Extended layouts render native wide spectra, performance bars, and pixel video; independent layouts can run different modes concurrently without crossing pad input. A numeric LED identifier makes physical units easy to locate.
 - **Desktop utilities:** digital clock, calendar, key-free live weather, and a focus timer.
 - **Casual games:** difficulty levels, automatic stages, wrap-around Snake, slower Whack-a-Mole, live scoreboards, and score celebration effects.
 - **Auto-chart rhythm games:** import WAV, MP3, OGG, FLAC, or AIFF and analyze beats, transients, and frequency bands before play. Waterfall and radial arcade-style games support Easy/Normal/Hard charts, note speed 1–5, 4–8 lanes, pause/resume, combo, timing grades, accuracy, and high scores.

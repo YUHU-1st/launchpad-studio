@@ -23,6 +23,11 @@
     <button id="stop-all" class="danger compact">全部停止</button>
   </header>
   <main>
+    <div class="card live-canvas-card">
+      <div class="card-title"><div><span class="eyebrow">Live Matrix</span><h3>实际灯光画布</h3></div><span id="canvas-size" class="chip">--</span></div>
+      <p class="muted">实时显示全部已连接设备；可直接拖动交换位置，空位排布在“布局”页调整。</p>
+      <div id="live-layout" class="device-layout live-layout"></div>
+    </div>
     <section id="tab-studio" class="tab active">
       <div class="hero card">
         <div><span class="eyebrow">当前状态</span><h2 id="active-mode">等待电脑</h2><p id="app-status">正在连接…</p></div>
@@ -98,19 +103,18 @@
     </section>
     <section id="tab-settings" class="tab">
       <div class="card">
-        <div class="card-title"><div><span class="eyebrow">Matrix Canvas</span><h3>多 Launchpad 画布</h3></div><button id="device-refresh">刷新端口</button></div>
-        <p class="muted">为每台设备设置编号、相对位置和功能。扩展模式会拼成更大的频谱或像素视频画布；独立模式允许各设备同时运行不同功能。</p>
-        <label class="switch-row"><input id="multi-enabled" type="checkbox"><span>启用多设备联动</span></label>
-        <label>联动方式<select id="link-mode"></select></label>
+        <div class="card-title"><div><span class="eyebrow">Matrix Canvas</span><h3>布局设置</h3></div><button id="device-auto-connect" class="primary compact">扫描并连接</button></div>
+        <p class="muted">像排列显示器一样拖动 Launchpad。扩展与复制由各功能页面统一切换；只有独立模式需要逐台选择功能。</p>
+        <div id="link-mode-buttons" class="mode-choice"><button data-link="扩展画布">扩展<small>拼成大画布</small></button><button data-link="复制画面">复制<small>同步显示</small></button><button data-link="独立模式">独立<small>不同功能</small></button></div>
+        <p class="muted layout-hint">拖动到空位可移动，拖到另一台设备上可交换位置。</p>
         <div id="device-layout" class="device-layout"></div>
         <div id="device-list" class="device-list"></div>
-        <div class="button-row"><button id="device-add">＋ 添加设备</button><button id="device-apply" class="primary">应用并连接</button></div>
-        <button id="device-test" class="wide">全部设备灯光测试</button>
+        <div class="button-row"><button id="device-refresh">刷新状态</button><button id="device-test">全部设备灯光测试</button></div>
       </div>
       <div class="card"><h3>连接信息</h3><p id="server-address" class="mono"></p><button id="forget-pin">忘记 PIN / 重新配对</button></div>
     </section>
   </main>
-  <nav><button class="nav active" data-tab="studio"><span>▦</span>Studio</button><button class="nav" data-tab="media"><span>♫</span>媒体</button><button class="nav" data-tab="macros"><span>⌘</span>宏</button><button class="nav" data-tab="settings"><span>⚙</span>设备</button></nav>
+  <nav><button class="nav active" data-tab="studio"><span>▦</span>Studio</button><button class="nav" data-tab="media"><span>♫</span>媒体</button><button class="nav" data-tab="macros"><span>⌘</span>宏</button><button class="nav" data-tab="settings"><span>⚙</span>布局</button></nav>
   <script src="/app.js"></script>
 </body>
 </html>

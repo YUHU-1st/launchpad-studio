@@ -18,7 +18,7 @@ from tkinter import colorchooser, messagebox, simpledialog, ttk
 from PIL import Image, ImageDraw
 import pystray
 
-from core.launchpad import ALL_PADS, MODELS, LaunchpadDevice, is_launchpad_port
+from core.launchpad import ALL_PADS, MODELS, LaunchpadDevice, is_launchpad_control_port
 from core.multi_launchpad import (LINK_EXTEND, LINK_INDEPENDENT, LINK_MIRROR, LINK_MODES,
                                   MODE_SOURCES, canvas_geometry, normalize_configs, number_frame, route_frames)
 from core.settings import AUDIO_DETAIL_DEFAULTS, VIDEO_DETAIL_DEFAULTS, Settings
@@ -36,7 +36,7 @@ from core.windows_media import SystemMediaBridge
 FROZEN = bool(getattr(sys,"frozen",False))
 BUNDLE_ROOT = Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parent))
 ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
-APP_VERSION = (BUNDLE_ROOT / "VERSION").read_text(encoding="utf-8").strip() if (BUNDLE_ROOT / "VERSION").exists() else "2.0.0"
+APP_VERSION = (BUNDLE_ROOT / "VERSION").read_text(encoding="utf-8").strip() if (BUNDLE_ROOT / "VERSION").exists() else "2.1.0"
 PRODUCT_TITLE = "Launchpad Studio 2 · Matrix"
 LOG_DIR = ROOT / "data"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -71,13 +71,26 @@ TEXT, MUTED, ACCENT, GOOD, BAD = "#f3f5fb", "#8992a7", "#7c5cff", "#34d399", "#f
 
 
 class PadCanvas(tk.Canvas):
-    def __init__(self, master, on_click, launchpad):
+    def __init__(self, master, on_click, on_layout_move, launchpad):
         super().__init__(master, bg=PANEL, highlightthickness=0, height=590, width=590)
         self.on_click = on_click
+        self.on_layout_move = on_layout_move
         self.launchpad = launchpad
         self.items, self.colors, self.selected = {}, {}, None
+        self.selected_device = None
+        self.full_layout = False
+        self.layout_configs = []
+        self.layout_devices = {}
+        self.device_frames = {}
+        self._layout_signature = None
+        self._hit_regions = []
+        self._tile_regions = []
+        self._drag = None
+        self._layout_step = 1
         self.bind("<Configure>", lambda _e: self.draw())
-        self.bind("<Button-1>", self._click)
+        self.bind("<ButtonPress-1>", self._press)
+        self.bind("<B1-Motion>", self._motion)
+        self.bind("<ButtonRelease-1>", self._release)
 
     def _geometry(self):
         w, h = max(300, self.winfo_width()), max(300, self.winfo_height())
@@ -89,8 +102,17 @@ class PadCanvas(tk.Canvas):
         ox, oy = (w-cols*cell)/2-min_x*cell, (h-rows*cell)/2-min_y*cell
         return ox, oy, cell
 
+    def _single_device_id(self):
+        return next((key for key,value in self.layout_devices.items() if value is self.launchpad),None)
+
     def draw(self):
+        if self.full_layout and len(self.layout_configs)>1:
+            return self._draw_full()
+        return self._draw_single()
+
+    def _draw_single(self):
         self.delete("all"); self.items.clear()
+        self._hit_regions=[]; self._tile_regions=[]
         ox, oy, cell = self._geometry()
         self.create_text(max(10,ox), 12, text=f"{self.launchpad.model.name.upper()} · {len(self.launchpad.pads)} LED CANVAS", anchor="nw",
                          fill=MUTED, font=("Segoe UI", 9, "bold"))
@@ -109,20 +131,116 @@ class PadCanvas(tk.Canvas):
                 item = self.create_rectangle(x1, y1, x2, y2, fill=fill, outline=outline,
                                              width=width)
             self.items[(x,y)] = item
+            self._hit_regions.append((self._single_device_id(),x,y,x1,y1,x2,y2))
             if cell > 48:
                 self.create_text((x1+x2)/2, (y1+y2)/2, text=self.launchpad.pad_label(x,y),
                                  fill="#ffffff" if sum(rgb)>250 else "#657087",
                                  font=("Segoe UI", 7))
 
-    def _click(self, event):
-        ox, oy, cell = self._geometry()
-        x, y = int((event.x-ox)//cell), int((event.y-oy)//cell)
-        if (x,y) in self.launchpad.pads:
-            self.selected = (x,y); self.draw(); self.on_click(x,y)
+    def _draw_full(self):
+        self.delete("all"); self.items.clear(); self._hit_regions=[]; self._tile_regions=[]
+        width,height,positions=canvas_geometry(self.layout_configs)
+        canvas_w,canvas_h=max(300,self.winfo_width()),max(300,self.winfo_height())
+        margin,header=18,42
+        tile_size=max(42,min((canvas_w-margin*2)/max(1,width),(canvas_h-header-margin)/max(1,height)))
+        total_w,total_h=width*tile_size,height*tile_size
+        base_x=(canvas_w-total_w)/2; base_y=header+(canvas_h-header-total_h)/2
+        self._layout_step=tile_size
+        self.create_text(margin,10,text=f"完整拼接画布 · {len(self.layout_configs)} DEVICES · {width*8}×{height*8} CORE · 拖动板块调整布局",
+                         anchor="nw",fill=MUTED,font=("Segoe UI",9,"bold"))
+        for config in self.layout_configs:
+            device_id=str(config.get("id")); device=self.layout_devices.get(device_id)
+            model=device.model if device else self.launchpad.model
+            tile_x,tile_y=positions[device_id]
+            left=base_x+tile_x*tile_size; top=base_y+tile_y*tile_size
+            cell=max(3,min((tile_size-18)/10,(tile_size-28)/10))
+            board_w=board_h=cell*10
+            ox=left+(tile_size-board_w)/2; oy=top+24+(tile_size-24-board_h)/2
+            selected_tile=self.selected_device==device_id
+            tag=f"tile-{device_id}"
+            self.create_rectangle(ox-5,oy-22,ox+board_w+5,oy+board_h+5,fill="#10141d",
+                                  outline=ACCENT if selected_tile else "#30384b",width=2,tags=(tag,"device-tile"))
+            self.create_text(ox,oy-11,text=f"LP {config.get('number',1)} · ({config.get('x',0)},{config.get('y',0)}) · {config.get('mode','')}",
+                             anchor="w",fill=TEXT if selected_tile else MUTED,font=("Segoe UI Semibold",8),tags=(tag,"device-tile"))
+            self._tile_regions.append((device_id,ox-5,oy-22,ox+board_w+5,oy+board_h+5))
+            frame=self.device_frames.get(device_id,{})
+            for x,y in model.pads:
+                gap=max(1,cell*.14); px=ox+(x+1)*cell; py=oy+y*cell
+                x1,y1=px+gap,py+gap; x2,y2=px+cell-gap,py+cell-gap
+                rgb=frame.get((x,y),(17,21,30)); fill="#%02x%02x%02x" % rgb
+                selected=self.selected_device==device_id and self.selected==(x,y)
+                outline="#ffffff" if selected else "#31394b"; line_width=3 if selected else 1
+                if y in (0,9) or x in (-1,8):
+                    item=self.create_oval(x1+cell*.08,y1+cell*.08,x2-cell*.08,y2-cell*.08,
+                                          fill=fill,outline=outline,width=line_width,tags=(tag,"device-tile"))
+                else:
+                    item=self.create_rectangle(x1,y1,x2,y2,fill=fill,outline=outline,width=line_width,tags=(tag,"device-tile"))
+                self.items[(device_id,x,y)]=item
+                self._hit_regions.append((device_id,x,y,x1,y1,x2,y2))
+                if cell>28:
+                    self.create_text((x1+x2)/2,(y1+y2)/2,text=device.pad_label(x,y) if device else "",
+                                     fill="#ffffff" if sum(rgb)>250 else "#657087",font=("Segoe UI",6),tags=(tag,"device-tile"))
+
+    def _press(self,event):
+        pad=next(((device_id,x,y) for device_id,x,y,x1,y1,x2,y2 in reversed(self._hit_regions)
+                  if x1<=event.x<=x2 and y1<=event.y<=y2),None)
+        tile=next((device_id for device_id,x1,y1,x2,y2 in reversed(self._tile_regions)
+                   if x1<=event.x<=x2 and y1<=event.y<=y2),None)
+        device_id=tile or (pad[0] if pad else None)
+        if device_id is None:return
+        self.selected_device=device_id
+        if pad:self.selected=(pad[1],pad[2])
+        config=next((item for item in self.layout_configs if str(item.get("id"))==device_id),{})
+        self._drag={"device_id":device_id,"pad":pad,"start_x":event.x,"start_y":event.y,"last_x":0,"last_y":0,
+                    "x":int(config.get("x",0)),"y":int(config.get("y",0)),"moved":False}
+
+    def _motion(self,event):
+        drag=self._drag
+        if not drag or not self.full_layout:return
+        if abs(event.x-drag["start_x"])+abs(event.y-drag["start_y"])<6:return
+        drag["moved"]=True; step=max(1,self._layout_step)
+        dx=round((event.x-drag["start_x"])/step)*step; dy=round((event.y-drag["start_y"])/step)*step
+        self.move(f"tile-{drag['device_id']}",dx-drag["last_x"],dy-drag["last_y"]); drag["last_x"],drag["last_y"]=dx,dy
+
+    def _release(self,event):
+        drag=self._drag; self._drag=None
+        if not drag:return
+        if drag["moved"] and self.full_layout:
+            step=max(1,self._layout_step)
+            x=max(-8,min(8,drag["x"]+round((event.x-drag["start_x"])/step)))
+            y=max(-8,min(8,drag["y"]+round((event.y-drag["start_y"])/step)))
+            self.on_layout_move(drag["device_id"],x,y); return
+        self.draw()
+        if drag["pad"]:self.on_click(drag["pad"][1],drag["pad"][2],drag["device_id"])
+
+    def select_pad(self,x,y,device_id=None):
+        self.selected=(x,y); self.selected_device=device_id or self._single_device_id(); self.draw()
+
+    def set_layout(self,configs,devices,full=False):
+        configs=[dict(item) for item in configs]
+        devices=dict(devices)
+        full=bool(full and len(configs)>1)
+        signature=(full,tuple((str(item.get("id")),int(item.get("number",1)),int(item.get("x",0)),int(item.get("y",0)),str(item.get("mode",""))) for item in configs),
+                   tuple((key,value.model.key) for key,value in devices.items()))
+        self.layout_configs,self.layout_devices,self.full_layout=configs,devices,full
+        if signature!=self._layout_signature:
+            self._layout_signature=signature; self.draw()
+
+    def set_device_frames(self,frames):
+        self.device_frames={str(key):dict(value) for key,value in frames.items()}
+        if self.full_layout:self._refresh_colors()
+
+    def _refresh_colors(self):
+        if not self.items:return self.draw()
+        for key,item in self.items.items():
+            if len(key)==2:rgb=self.colors.get(key,(17,21,30))
+            else:
+                device_id,x,y=key; rgb=self.device_frames.get(device_id,{}).get((x,y),(17,21,30))
+            self.itemconfigure(item,fill="#%02x%02x%02x" % rgb)
 
     def set_frame(self, frame):
         self.colors = frame
-        self.draw()
+        if not self.full_layout:self._refresh_colors()
 
 
 class LaunchpadStudio(tk.Tk):
@@ -144,6 +262,7 @@ class LaunchpadStudio(tk.Tk):
         self.lp = LaunchpadDevice(self._hardware_pad, initial_model if initial_model != "auto" else "mk2")
         self.launchpads={"lp1":self.lp}
         self.multi_cfg=self.settings_store.data["multi_launchpad"]
+        self.layout_selected_id=None
         self.mode_frames={}
         self.active_modes=set()
         self._param_save_job=None; self._settings_save_job=None; self._parameter_clipboard=None
@@ -190,6 +309,10 @@ class LaunchpadStudio(tk.Tk):
 
     def _build_style(self):
         s = ttk.Style(self); s.theme_use("clam")
+        self.option_add("*TCombobox*Listbox.background",PANEL2)
+        self.option_add("*TCombobox*Listbox.foreground",TEXT)
+        self.option_add("*TCombobox*Listbox.selectBackground",ACCENT)
+        self.option_add("*TCombobox*Listbox.selectForeground","white")
         s.configure("TFrame", background=BG); s.configure("Panel.TFrame", background=PANEL)
         s.configure("TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 10))
         s.configure("Panel.TLabel", background=PANEL, foreground=TEXT)
@@ -202,6 +325,8 @@ class LaunchpadStudio(tk.Tk):
         s.map("Accent.TButton", background=[("active", "#927aff")])
         s.configure("TCombobox", fieldbackground=PANEL2, background=PANEL2, foreground=TEXT,
                     arrowcolor=TEXT, bordercolor="#30384b")
+        s.map("TCombobox",fieldbackground=[("readonly",PANEL2)],foreground=[("readonly",TEXT)],
+              selectbackground=[("readonly",PANEL2)],selectforeground=[("readonly",TEXT)])
         s.configure("TEntry", fieldbackground=PANEL2, foreground=TEXT, insertcolor=TEXT,
                     bordercolor="#30384b")
         s.configure("TScale", background=PANEL, troughcolor="#292f40")
@@ -212,7 +337,7 @@ class LaunchpadStudio(tk.Tk):
         ttk.Label(top, text=PRODUCT_TITLE, style="Title.TLabel").pack(side="left", pady=14)
         self.status_dot = tk.Label(top, text="●", bg=BG, fg=BAD, font=("Segoe UI", 13)); self.status_dot.pack(side="left", padx=(18,5))
         self.device_status = tk.Label(top, text="未连接", bg=BG, fg=MUTED, font=("Segoe UI", 9)); self.device_status.pack(side="left")
-        ttk.Button(top, text="设备设置", command=self._device_dialog).pack(side="right", pady=12)
+        ttk.Button(top, text="布局设置", command=lambda:self._show_mode("布局设置")).pack(side="right", pady=12)
         ttk.Button(top, text="手机遥控", command=self._remote_dialog).pack(side="right", padx=8, pady=12)
         ttk.Button(top, text="灯光测试", command=self._test_lights).pack(side="right", padx=8, pady=12)
         ttk.Button(top,text="■ 全部停止并熄灯",command=self._stop_all_and_clear).pack(side="right",pady=12)
@@ -221,7 +346,7 @@ class LaunchpadStudio(tk.Tk):
         side = tk.Frame(body, bg=PANEL, width=188); side.pack(side="left", fill="y"); side.pack_propagate(False)
         tk.Label(side, text="模式", bg=PANEL, fg=MUTED, font=("Segoe UI",9,"bold")).pack(anchor="w", padx=18, pady=(22,10))
         self.mode_buttons = {}
-        icons = {"性能监控":"▥", "宏按键":"⌘", "视频播放":"▶", "音乐演示":"♫", "实时拾音":"≋", "工具与游戏":"◈"}
+        icons = {"性能监控":"▥", "宏按键":"⌘", "视频播放":"▶", "音乐演示":"♫", "实时拾音":"≋", "工具与游戏":"◈", "布局设置":"▦"}
         for name in icons:
             b = tk.Button(side, text=f" {icons[name]}   {name}", anchor="w", bg=PANEL, fg=TEXT,
                           activebackground=PANEL2, activeforeground=TEXT, relief="flat",
@@ -241,7 +366,9 @@ class LaunchpadStudio(tk.Tk):
         self.model_footer.pack(side="bottom",pady=16)
 
         self.center = tk.Frame(body,bg=PANEL); self.center.pack(side="left",fill="both",expand=True,padx=(12,12))
-        self.pad_canvas=PadCanvas(self.center,self._canvas_pad,self.lp); self.pad_canvas.pack(fill="both",expand=True,padx=8,pady=8)
+        canvas_tools=tk.Frame(self.center,bg=PANEL); canvas_tools.pack(fill="x",padx=12,pady=(9,0))
+        tk.Label(canvas_tools,text="实际灯光画布 · 多设备可直接拖动调整位置",bg=PANEL,fg=MUTED,font=("Segoe UI",9,"bold")).pack(side="left")
+        self.pad_canvas=PadCanvas(self.center,self._canvas_pad,self._canvas_layout_move,self.lp); self.pad_canvas.pack(fill="both",expand=True,padx=8,pady=(2,8))
         self.right=tk.Frame(body,bg=BG,width=330); self.right.pack(side="right",fill="y"); self.right.pack_propagate(False)
         page_host=tk.Frame(self.right,bg=BG); page_host.pack(fill="both",expand=True)
         self.page_canvas=tk.Canvas(page_host,bg=BG,highlightthickness=0,width=312)
@@ -296,6 +423,12 @@ class LaunchpadStudio(tk.Tk):
         except Exception:logging.debug("Remote state update failed",exc_info=True)
         self.remote_tick_job=self.after(250,self._remote_tick)
 
+    def _remote_led_grid(self,device_id):
+        device=self.launchpads.get(str(device_id))
+        if not device:return [""]*100
+        return ["%02x%02x%02x" % device.colors[(x,y)] if (x,y) in device.colors else ""
+                for y in range(10) for x in range(-1,9)]
+
     def _remote_state(self):
         def detail(mode):
             values=dict(self.settings_store.data["detail_params"].get(mode,{}))
@@ -325,6 +458,8 @@ class LaunchpadStudio(tk.Tk):
                          "link_modes":list(LINK_MODES),"mode_sources":list(MODE_SOURCES),
                          "devices":[{"id":item.get("id"),"number":item.get("number"),"x":item.get("x",0),"y":item.get("y",0),
                                      "mode":item.get("mode","性能监控"),"model":item.get("model","auto"),
+                                      "model_name":self.launchpads[str(item.get("id"))].model.name if self.launchpads.get(str(item.get("id"))) else "自动识别",
+                                      "led_grid":self._remote_led_grid(item.get("id")),
                                      "input":item.get("input",""),"output":item.get("output",""),
                                      "input_index":item.get("input_index",-1),"output_index":item.get("output_index",-1),
                                      "connected":bool(self.launchpads.get(str(item.get("id"))) and self.launchpads[str(item.get("id"))].connected)}
@@ -411,6 +546,8 @@ class LaunchpadStudio(tk.Tk):
             elif action.startswith("preset."):self._remote_preset(action[7:],value)
             elif action=="device.refresh":self._refresh_midi(); self.set_status("MIDI 设备列表已刷新")
             elif action=="device.multi.apply":self._remote_multi_apply(value)
+            elif action=="device.layout.update":self._remote_layout_update(value)
+            elif action=="device.auto_connect":self._auto_connect_launchpads()
             elif action=="device.identify":self._remote_identify(value)
             elif action=="device.connect":self._remote_connect(value)
         except Exception as exc:
@@ -546,6 +683,29 @@ class LaunchpadStudio(tk.Tk):
         self._global_visual_update(); self._redispatch_frames()
         self.set_status(f"手机端已应用 {len(configs) if enabled else 1} 台 Launchpad · {link_mode}" if complete else "多设备配置已保存，部分 MIDI 端口连接失败")
 
+    def _remote_layout_update(self,value):
+        if not isinstance(value,dict):raise ValueError("布局参数错误")
+        link_mode=str(value.get("link_mode",self.multi_cfg.get("link_mode",LINK_EXTEND)))
+        if link_mode not in LINK_MODES:raise ValueError("不支持的联动方式")
+        updates=value.get("devices",[])
+        if not isinstance(updates,list):raise ValueError("设备布局错误")
+        draft=json.loads(json.dumps(self.multi_cfg.get("devices",[]),ensure_ascii=False))
+        current={str(item.get("id")):item for item in draft}
+        for update in updates:
+            item=current.get(str(update.get("id"))) if isinstance(update,dict) else None
+            if not item:raise ValueError("布局中包含未知设备")
+            x,y=int(update.get("x",item.get("x",0))),int(update.get("y",item.get("y",0)))
+            mode=str(update.get("mode",item.get("mode","性能监控")))
+            if not -8<=x<=8 or not -8<=y<=8:raise ValueError("设备坐标超出范围")
+            if mode not in MODE_SOURCES:raise ValueError("设备模式无效")
+            item.update(x=x,y=y,mode=mode)
+        positions=[(int(item.get("x",0)),int(item.get("y",0))) for item in current.values()]
+        if len(positions)!=len(set(positions)):raise ValueError("设备位置不能重叠")
+        self.multi_cfg.update(link_mode=link_mode,devices=draft); self.settings_store.save()
+        self._global_visual_update(); self._redispatch_frames(); self._sync_canvas_preview()
+        if self.mode=="布局设置":self._show_mode("布局设置")
+        self.set_status(f"手机端已更新布局 · {link_mode}")
+
     def _remote_identify(self,value):
         device_id=str(value.get("id","")) if isinstance(value,dict) else str(value or "")
         item=next((row for row in self.multi_cfg.get("devices",[]) if str(row.get("id"))==device_id),None)
@@ -578,7 +738,75 @@ class LaunchpadStudio(tk.Tk):
         self.mode=name; self._clear_page()
         for n,b in self.mode_buttons.items(): b.configure(bg=PANEL2 if n==name else PANEL,fg="#c8bfff" if n==name else TEXT)
         {"性能监控":self._page_performance,"宏按键":self._page_macros,"视频播放":self._page_video,
-         "音乐演示":self._page_music,"实时拾音":self._page_live,"工具与游戏":self._page_utilities}[name]()
+         "音乐演示":self._page_music,"实时拾音":self._page_live,"工具与游戏":self._page_utilities,
+         "布局设置":self._page_layout}[name]()
+
+    def _page_layout(self):
+        self._page_title("布局设置","像排列显示器一样拖动左侧 Launchpad；连接、联动和独立模式分配都在这里完成。")
+        devices=list(self.multi_cfg.get("devices",[]))
+        connected=sum(device.connected for device in self.launchpads.values())
+        summary=self._card()
+        tk.Label(summary,text=f"布局中 {len(devices)} 台 · 已连接 {connected} 台",bg=PANEL2,fg=TEXT,font=("Segoe UI Semibold",13)).pack(anchor="w")
+        tk.Label(summary,text="自动识别会匹配全部 Launchpad 的 MIDI 输入/输出，无需手工选择端口。",bg=PANEL2,fg=MUTED,font=("Segoe UI",8),wraplength=275,justify="left").pack(anchor="w",pady=(4,8))
+        ttk.Button(summary,text="扫描并连接全部 Launchpad",style="Accent.TButton",command=self._auto_connect_launchpads).pack(fill="x")
+        tk.Label(self.page,text="联动方式",bg=BG,fg=MUTED,font=("Segoe UI",9,"bold")).pack(anchor="w",pady=(14,6))
+        mode_box=tk.Frame(self.page,bg=BG); mode_box.pack(fill="x")
+        descriptions={LINK_EXTEND:"拼成一块大画布",LINK_MIRROR:"所有设备显示相同画面",LINK_INDEPENDENT:"每台运行不同功能"}
+        current=self.multi_cfg.get("link_mode",LINK_EXTEND)
+        for mode in LINK_MODES:
+            selected=mode==current
+            button=tk.Button(mode_box,text=f"{mode}\n{descriptions[mode]}",command=lambda value=mode:self._set_layout_link_mode(value),
+                             bg=ACCENT if selected else PANEL2,fg="white" if selected else TEXT,
+                             activebackground="#927aff" if selected else "#252b3b",activeforeground="white",
+                             relief="flat",font=("Segoe UI Semibold",8),padx=5,pady=8,cursor="hand2",wraplength=82)
+            button.pack(side="left",expand=True,fill="x",padx=(0 if mode==LINK_EXTEND else 4,0))
+        if not devices:
+            tk.Label(self.page,text="点击“扫描并连接”后，设备会自动出现在左侧画布。",bg=PANEL2,fg=MUTED,
+                     font=("Segoe UI",9),padx=12,pady=16,wraplength=275,justify="left").pack(fill="x",pady=14)
+            return
+        tk.Label(self.page,text="设备",bg=BG,fg=MUTED,font=("Segoe UI",9,"bold")).pack(anchor="w",pady=(14,2))
+        if current!=LINK_INDEPENDENT:
+            tk.Label(self.page,text="扩展/复制模式由左侧功能页面统一切换，不需要逐台分配模式。",bg=BG,fg="#687187",font=("Segoe UI",8),wraplength=290,justify="left").pack(anchor="w",pady=(0,4))
+        for item in sorted(devices,key=lambda row:int(row.get("number",99))):
+            device_id=str(item.get("id")); device=self.launchpads.get(device_id); online=bool(device and device.connected)
+            card=self._card(); header=tk.Frame(card,bg=PANEL2); header.pack(fill="x")
+            tk.Label(header,text=f"LP {item.get('number',1)}",bg=PANEL2,fg=TEXT,font=("Segoe UI Semibold",12)).pack(side="left")
+            tk.Label(header,text="● 已连接" if online else "○ 未连接",bg=PANEL2,fg=GOOD if online else MUTED,font=("Segoe UI",8)).pack(side="left",padx=8)
+            ttk.Button(header,text="选中",command=lambda did=device_id:self._select_layout_device(did)).pack(side="right")
+            model_name=device.model.name if device else next((model.name for model in MODELS if model.key==item.get("model")),"自动识别")
+            tk.Label(card,text=f"{model_name} · 位置 ({item.get('x',0)}, {item.get('y',0)})",bg=PANEL2,fg=MUTED,font=("Segoe UI",8)).pack(anchor="w",pady=(5,6))
+            if current==LINK_INDEPENDENT:
+                row=tk.Frame(card,bg=PANEL2); row.pack(fill="x",pady=(2,6))
+                tk.Label(row,text="运行功能",bg=PANEL2,fg=MUTED,font=("Segoe UI",8)).pack(side="left")
+                variable=tk.StringVar(value=item.get("mode","性能监控"))
+                combo=ttk.Combobox(row,textvariable=variable,state="readonly",values=MODE_SOURCES,width=12)
+                combo.pack(side="right"); combo.bind("<<ComboboxSelected>>",lambda _e,did=device_id,var=variable:self._set_device_mode(did,var.get()))
+            ttk.Button(card,text="在实机显示编号",command=lambda did=device_id:self._identify_device(did)).pack(fill="x")
+        self._sync_canvas_preview()
+
+    def _set_layout_link_mode(self,mode):
+        if mode not in LINK_MODES:return
+        self.multi_cfg["link_mode"]=mode; self.settings_store.save()
+        self._redispatch_frames(); self._show_mode("布局设置")
+        self.set_status(f"联动方式已切换为 {mode}")
+
+    def _set_device_mode(self,device_id,mode):
+        if mode not in MODE_SOURCES:return
+        item=next((row for row in self.multi_cfg.get("devices",[]) if str(row.get("id"))==str(device_id)),None)
+        if not item:return
+        item["mode"]=mode; self.settings_store.save(); self._redispatch_frames(); self._sync_canvas_preview()
+        self.set_status(f"LP {item.get('number',1)} 已分配到 {mode}")
+
+    def _select_layout_device(self,device_id):
+        self.layout_selected_id=str(device_id); self.pad_canvas.selected_device=str(device_id); self.pad_canvas.draw()
+
+    def _identify_device(self,device_id):
+        item=next((row for row in self.multi_cfg.get("devices",[]) if str(row.get("id"))==str(device_id)),None)
+        device=self.launchpads.get(str(device_id))
+        if not item or not device or not device.connected:
+            self.set_status("设备尚未连接，请先扫描并连接"); return
+        device.set_frame(number_frame(item.get("number",1)),force=True); self.after(1800,self._redispatch_frames)
+        self.set_status(f"正在用灯光显示 LP {item.get('number',1)}")
 
     def _page_performance(self):
         self._page_title("性能监控","负载映射到 8×8 灯柱；右侧圆键显示当前最高硬件温度。")
@@ -1452,16 +1680,29 @@ class LaunchpadStudio(tk.Tk):
             self.apply_frame(self._rhythm_score_overlay(frame),"工具与游戏"); self._update_rhythm_scoreboard(choice)
             self.set_status({"perfect":"PERFECT！","great":"GREAT！","good":"GOOD！","miss":"MISS"}.get(result,"请按亮起的目标琴键"))
 
-    def _canvas_pad(self,x,y):
-        if self.mode=="宏按键":self._load_macro_form(x,y)
+    def _canvas_pad(self,x,y,device_id=None):
+        if self.mode=="布局设置" and device_id:self._select_layout_device(device_id)
+        elif self.mode=="宏按键":self._load_macro_form(x,y)
         elif self.mode=="工具与游戏":self._utility_pad(x,y)
+
+    def _canvas_layout_move(self,device_id,x,y):
+        devices=self.multi_cfg.get("devices",[])
+        item=next((row for row in devices if str(row.get("id"))==str(device_id)),None)
+        if not item:return
+        old_x,old_y=int(item.get("x",0)),int(item.get("y",0))
+        other=next((row for row in devices if row is not item and (int(row.get("x",0)),int(row.get("y",0)))==(x,y)),None)
+        item.update(x=int(x),y=int(y))
+        if other:other.update(x=old_x,y=old_y)
+        self.settings_store.save(); self._global_visual_update(); self._redispatch_frames(); self._sync_canvas_preview()
+        if self.mode=="布局设置":self._show_mode("布局设置")
+        self.set_status(f"LP {item.get('number',1)} 已移动到 ({x}, {y})"+("，并与目标设备交换位置" if other else ""))
 
     def _hardware_pad(self,x,y,pressed,velocity,device_id="lp1"):
         self.after(0,lambda:self._handle_pad_ui(x,y,pressed,device_id))
 
     def _handle_pad_ui(self,x,y,pressed,device_id="lp1"):
         if not pressed:return
-        self.pad_canvas.selected=(x,y); self.pad_canvas.draw()
+        self.pad_canvas.select_pad(x,y,device_id)
         games=("贪吃蛇","打地鼠","瀑布音游","环形音游")
         device_mode=self.active_mode
         if self.multi_cfg.get("enabled") and self.multi_cfg.get("link_mode")==LINK_INDEPENDENT:
@@ -1505,11 +1746,36 @@ class LaunchpadStudio(tk.Tk):
             if not any(device.connected for device in self.launchpads.values()):
                 self._connect_launchpad_configs(self.multi_cfg["devices"],silent=True)
         elif not self.lp.connected:
-            ins=[i for i,n in enumerate(self.midi_inputs) if is_launchpad_port(n)]
-            outs=[i for i,n in enumerate(self.midi_outputs) if is_launchpad_port(n)]
+            ins=[i for i,n in enumerate(self.midi_inputs) if is_launchpad_control_port(n)]
+            outs=[i for i,n in enumerate(self.midi_outputs) if is_launchpad_control_port(n)]
             if ins and outs:
-                try:self.lp.connect(ins[0],outs[0],self.settings_store.data.get("launchpad_model","auto")); self._connected_ui()
+                try:self.lp.connect(ins[0],outs[0],"auto"); self._connected_ui()
                 except Exception as e:self.set_status(f"自动连接失败：{e}")
+
+    def _auto_connect_launchpads(self):
+        self.midi_inputs,self.midi_outputs=self.lp.devices()
+        input_indices=[index for index,name in enumerate(self.midi_inputs) if is_launchpad_control_port(name)]
+        output_indices=[index for index,name in enumerate(self.midi_outputs) if is_launchpad_control_port(name)]
+        count=min(len(input_indices),len(output_indices))
+        if not count:
+            self.set_status("没有发现 Launchpad，请检查 USB 连接后重试"); return
+        existing=list(self.multi_cfg.get("devices",[])); used_ids=set(); reserved_ids={str(item.get("id")) for item in existing}; configs=[]
+        for ordinal,(input_index,output_index) in enumerate(zip(input_indices[:count],output_indices[:count]),1):
+            input_name,output_name=self.midi_inputs[input_index],self.midi_outputs[output_index]
+            saved=next((item for item in existing if item.get("input")==input_name and item.get("output")==output_name and str(item.get("id")) not in used_ids),None)
+            if saved is None:saved=next((item for item in existing if int(item.get("number",-1))==ordinal and str(item.get("id")) not in used_ids),None)
+            device_id=str(saved.get("id")) if saved else next(f"lp{i}" for i in range(1,100) if f"lp{i}" not in used_ids and f"lp{i}" not in reserved_ids)
+            used_ids.add(device_id)
+            configs.append({"id":device_id,"number":ordinal,"x":int(saved.get("x",ordinal-1)) if saved else ordinal-1,
+                            "y":int(saved.get("y",0)) if saved else 0,"mode":saved.get("mode","性能监控") if saved else "性能监控",
+                            "model":saved.get("model","auto") if saved else "auto","input":input_name,"output":output_name,
+                            "input_index":input_index,"output_index":output_index})
+        self.multi_cfg.update(enabled=count>1,devices=configs)
+        self.settings_store.data["launchpad_model"]=configs[0]["model"]; self.settings_store.save()
+        complete=self._connect_launchpad_configs(configs if count>1 else configs[:1],silent=True)
+        self._global_visual_update(); self._redispatch_frames(); self._show_mode("布局设置")
+        if len(input_indices)!=len(output_indices):self.set_status(f"已连接 {count} 台；另有 MIDI 输入/输出未成对")
+        else:self.set_status(f"已自动识别并连接 {count} 台 Launchpad" if complete else f"已识别 {count} 台，部分设备连接失败")
 
     @staticmethod
     def _port_label(index,names):
@@ -1555,120 +1821,49 @@ class LaunchpadStudio(tk.Tk):
         self.after(3000,self._midi_watchdog)
 
     def _device_dialog(self):
-        self.midi_inputs,self.midi_outputs=self.lp.devices()
-        win=tk.Toplevel(self); win.title("多 Launchpad 画布设置"); win.geometry("940x650"); win.minsize(820,570); win.configure(bg=BG); win.transient(self); win.grab_set()
-        draft=json.loads(json.dumps(self.multi_cfg.get("devices",[]),ensure_ascii=False))
-        if not draft:
-            ins=[i for i,n in enumerate(self.midi_inputs) if is_launchpad_port(n)]
-            outs=[i for i,n in enumerate(self.midi_outputs) if is_launchpad_port(n)]
-            if ins and outs:
-                input_index,output_index=ins[0],outs[0]
-                draft.append({"id":"lp1","number":1,"x":0,"y":0,"mode":"性能监控","model":"auto",
-                              "input":self.midi_inputs[input_index],"output":self.midi_outputs[output_index],
-                              "input_index":input_index,"output_index":output_index})
-        tk.Label(win,text="多 Launchpad 画布",bg=BG,fg=TEXT,font=("Segoe UI Semibold",16)).pack(anchor="w",padx=20,pady=(16,2))
-        tk.Label(win,text="像 Windows 多显示器一样编号并设置相对坐标。扩展会切分更大的画布；复制会显示同一画面；独立模式可同时运行不同功能。",bg=BG,fg=MUTED,wraplength=880,justify="left").pack(anchor="w",padx=20,pady=(0,12))
-        options=tk.Frame(win,bg=BG); options.pack(fill="x",padx=20)
-        enabled=tk.BooleanVar(value=bool(self.multi_cfg.get("enabled",len(draft)>1)))
-        link_mode=tk.StringVar(value=self.multi_cfg.get("link_mode",LINK_EXTEND))
-        ttk.Checkbutton(options,text="启用多设备联动",variable=enabled).pack(side="left")
-        tk.Label(options,text="联动方式",bg=BG,fg=MUTED).pack(side="left",padx=(25,6))
-        ttk.Combobox(options,textvariable=link_mode,state="readonly",values=LINK_MODES,width=12).pack(side="left")
-        preview=tk.Canvas(win,bg=PANEL2,height=155,highlightthickness=0); preview.pack(fill="x",padx=20,pady=12)
-        columns=("number","position","mode","model","input","output","state")
-        tree=ttk.Treeview(win,columns=columns,show="headings",height=7)
-        for key,label,width in (("number","编号",48),("position","位置",65),("mode","分配模式",90),("model","型号",115),("input","输入端口",170),("output","输出端口",170),("state","状态",70)):
-            tree.heading(key,text=label); tree.column(key,width=width,anchor="center" if key in ("number","position","state") else "w")
-        tree.pack(fill="both",expand=True,padx=20)
-        selected=tk.IntVar(value=0); number=tk.IntVar(value=1); xpos=tk.IntVar(value=0); ypos=tk.IntVar(value=0)
-        modevar=tk.StringVar(value="性能监控"); modelvar=tk.StringVar(value="自动识别"); invar=tk.StringVar(); outvar=tk.StringVar()
-        input_values=[self._port_label(i,self.midi_inputs) for i in range(len(self.midi_inputs))]
-        output_values=[self._port_label(i,self.midi_outputs) for i in range(len(self.midi_outputs))]
-        model_values=["自动识别"]+[model.name for model in MODELS]
-        def redraw():
-            for row in tree.get_children():tree.delete(row)
-            for index,item in enumerate(draft):
-                device=self.launchpads.get(str(item.get("id"))); state="已连接" if device and device.connected else "未连接"
-                model_name="自动识别" if item.get("model","auto")=="auto" else next((m.name for m in MODELS if m.key==item.get("model")),item.get("model"))
-                tree.insert("", "end", iid=str(index), values=(item.get("number"),f"{item.get('x',0)},{item.get('y',0)}",item.get("mode","性能监控"),model_name,item.get("input",""),item.get("output",""),state))
-            preview.delete("all")
-            if draft:
-                _,_,positions=canvas_geometry(draft); max_x=max(x for x,_ in positions.values()); max_y=max(y for _,y in positions.values())
-                cell=min(112,760/max(1,max_x+1),120/max(1,max_y+1)); total_w=(max_x+1)*cell; total_h=(max_y+1)*cell
-                ox=(max(100,preview.winfo_width())-total_w)/2; oy=(155-total_h)/2
-                for index,item in enumerate(draft):
-                    x,y=positions[str(item["id"])]; x1=ox+x*cell+5; y1=oy+y*cell+5; x2=x1+cell-10; y2=y1+cell-10
-                    preview.create_rectangle(x1,y1,x2,y2,fill="#252c3d",outline=ACCENT if index==selected.get() else "#4a536b",width=3)
-                    preview.create_text((x1+x2)/2,(y1+y2)/2,text=f"LP {item.get('number')}\n{item.get('mode','')}",fill=TEXT,font=("Segoe UI Semibold",10),justify="center")
-        def load(index):
-            if not draft:return
-            index=max(0,min(index,len(draft)-1)); selected.set(index); item=draft[index]
-            number.set(item.get("number",index+1)); xpos.set(item.get("x",0)); ypos.set(item.get("y",0)); modevar.set(item.get("mode","性能监控"))
-            modelvar.set("自动识别" if item.get("model","auto")=="auto" else next((m.name for m in MODELS if m.key==item.get("model")),"自动识别"))
-            invar.set(self._port_label(int(item.get("input_index",-1)),self.midi_inputs)); outvar.set(self._port_label(int(item.get("output_index",-1)),self.midi_outputs)); redraw()
-        tree.bind("<<TreeviewSelect>>",lambda _e:load(int(tree.selection()[0])) if tree.selection() else None)
-        form=tk.Frame(win,bg=BG); form.pack(fill="x",padx=20,pady=10)
-        for column,(label,var,widget) in enumerate((("编号",number,"spin"),("X",xpos,"spin"),("Y",ypos,"spin"),("设备模式",modevar,"mode"),("型号",modelvar,"model"),("输入",invar,"input"),("输出",outvar,"output"))):
-            box=tk.Frame(form,bg=BG); box.grid(row=0,column=column,sticky="ew",padx=(0,5)); tk.Label(box,text=label,bg=BG,fg=MUTED,font=("Segoe UI",8)).pack(anchor="w")
-            if widget=="spin":control=ttk.Spinbox(box,from_=-8 if label!="编号" else 1,to=8 if label!="编号" else 99,textvariable=var,width=5)
-            else:control=ttk.Combobox(box,textvariable=var,state="readonly",values={"mode":MODE_SOURCES,"model":model_values,"input":input_values,"output":output_values}[widget],width=13 if widget in ("mode","model") else 20)
-            control.pack(fill="x")
-            form.grid_columnconfigure(column,weight=2 if widget in ("input","output") else 1)
-        def save_row():
-            if not draft:return
-            input_index=int(invar.get().split(" · ",1)[0]) if " · " in invar.get() else -1; output_index=int(outvar.get().split(" · ",1)[0]) if " · " in outvar.get() else -1
-            if input_index<0 or output_index<0:return messagebox.showerror("端口未选择","请选择输入和输出 MIDI 端口。",parent=win)
-            item=draft[selected.get()]; item.update(number=int(number.get()),x=int(xpos.get()),y=int(ypos.get()),mode=modevar.get(),
-                model=next((m.key for m in MODELS if m.name==modelvar.get()),"auto"),input=self.midi_inputs[input_index],output=self.midi_outputs[output_index],input_index=input_index,output_index=output_index)
-            redraw(); tree.selection_set(str(selected.get()))
-        def add_row():
-            used={str(item.get("id")) for item in draft}; next_id=next(f"lp{i}" for i in range(1,100) if f"lp{i}" not in used); index=len(draft)
-            draft.append({"id":next_id,"number":index+1,"x":index,"y":0,"mode":"性能监控","model":"auto","input":"","output":"","input_index":-1,"output_index":-1}); enabled.set(True); load(index); tree.selection_set(str(index))
-        def remove_row():
-            if not draft:return
-            draft.pop(selected.get()); selected.set(max(0,min(selected.get(),len(draft)-1))); redraw(); load(selected.get()) if draft else None
-        def identify():
-            if not draft:return
-            item=draft[selected.get()]; device=self.launchpads.get(str(item.get("id")))
-            if not device or not device.connected:return messagebox.showinfo("设备未连接","请先应用并连接设备。",parent=win)
-            device.set_frame(number_frame(item.get("number",1)),force=True); self.after(1800,self._redispatch_frames)
-        buttons=tk.Frame(win,bg=BG); buttons.pack(fill="x",padx=20,pady=(0,14))
-        ttk.Button(buttons,text="更新选中设备",command=save_row).pack(side="left"); ttk.Button(buttons,text="＋ 添加设备",command=add_row).pack(side="left",padx=5); ttk.Button(buttons,text="移除",command=remove_row).pack(side="left"); ttk.Button(buttons,text="用灯光显示编号",command=identify).pack(side="left",padx=5)
-        def apply():
-            if not draft:return messagebox.showerror("没有设备","请至少添加一台 Launchpad。",parent=win)
-            save_row()
-            numbers=[int(item.get("number",0)) for item in draft]
-            if len(numbers)!=len(set(numbers)):return messagebox.showerror("编号重复","每台 Launchpad 必须使用不同编号。",parent=win)
-            inputs=[int(item.get("input_index",-1)) for item in draft]; outputs=[int(item.get("output_index",-1)) for item in draft]
-            if min(inputs+outputs)<0:return messagebox.showerror("端口未选择","请为每台 Launchpad 选择输入和输出端口。",parent=win)
-            if len(inputs)!=len(set(inputs)) or len(outputs)!=len(set(outputs)):return messagebox.showerror("端口重复","同一个 MIDI 端口不能分配给多台 Launchpad。",parent=win)
-            if link_mode.get()==LINK_EXTEND:
-                positions=[(int(item.get("x",0)),int(item.get("y",0))) for item in draft]
-                if len(positions)!=len(set(positions)):return messagebox.showerror("位置重叠","扩展画布中的设备位置不能重叠。",parent=win)
-            multi_enabled=bool(enabled.get() and len(draft)>1)
-            self.multi_cfg.update(enabled=multi_enabled,link_mode=link_mode.get(),devices=draft)
-            self.settings_store.save(); self._connect_launchpad_configs(draft if multi_enabled else draft[:1]); self._global_visual_update(); self._redispatch_frames(); win.destroy()
-        ttk.Button(buttons,text="应用并连接",style="Accent.TButton",command=apply).pack(side="right")
-        redraw(); load(0) if draft else None
+        self._show_mode("布局设置")
+
 
     def _connected_ui(self):
         model=self.lp.model
         count=sum(device.connected for device in self.launchpads.values())
         self.status_dot.configure(fg=GOOD); self.device_status.configure(text=f"{count} 台 Launchpad 已连接" if count>1 else f"{model.name} 已连接",fg=GOOD)
         self.model_footer.configure(text=f"{model.name} · {len(model.pads)} LEDs")
-        self.pad_canvas.colors={xy:(0,0,0) for xy in model.pads}; self.pad_canvas.selected=None; self.pad_canvas.draw()
+        self.pad_canvas.colors={xy:(0,0,0) for xy in model.pads}; self.pad_canvas.selected=None; self.pad_canvas.selected_device=None
+        self._sync_canvas_preview({key:device.colors for key,device in self.launchpads.items()})
         self.set_status(f"已连接 {count} 台 Launchpad · {self.multi_cfg.get('link_mode',LINK_EXTEND)}" if count>1 else f"真机已连接 · {len(model.pads)} LEDs · {model.name}")
 
     def _test_lights(self):
         devices=[device for device in self.launchpads.values() if device.connected]
-        if not devices:return self._device_dialog()
+        if not devices:return self._show_mode("布局设置")
         for device in devices:device.test_pattern()
-        self.pad_canvas.set_frame(self.lp.colors); self.set_status(f"{len(devices)} 台 Launchpad RGB 全键灯光测试")
+        self._sync_canvas_preview({key:device.colors for key,device in self.launchpads.items()})
+        self.set_status(f"{len(devices)} 台 Launchpad RGB 全键灯光测试")
 
     def _layout_configs(self):
-        if self.multi_cfg.get("enabled") and self.multi_cfg.get("devices"):return self.multi_cfg["devices"]
+        if self.multi_cfg.get("enabled") and self.multi_cfg.get("devices"):
+            connected_ids={key for key,device in self.launchpads.items() if device.connected}
+            connected=[item for item in self.multi_cfg["devices"] if str(item.get("id")) in connected_ids]
+            return connected or self.multi_cfg["devices"]
         device_id=next((key for key,value in self.launchpads.items() if value is self.lp),"lp1")
         return [{"id":device_id,"number":1,"x":0,"y":0,"mode":self.active_mode or self.mode}]
+
+    def _sync_canvas_preview(self,frames=None):
+        if not hasattr(self,"pad_canvas"):return
+        configs=[dict(item) for item in self._layout_configs()]
+        if self.multi_cfg.get("link_mode",LINK_EXTEND)!=LINK_INDEPENDENT:
+            display_mode=self.active_mode or (next(reversed(self.mode_frames)) if self.mode_frames else "待机")
+            for item in configs:item["mode"]=display_mode
+        full=bool(self.multi_cfg.get("enabled") and len(configs)>1)
+        actual={key:device.colors for key,device in self.launchpads.items()}
+        if frames is not None:actual.update(frames)
+        frames=actual
+        self.pad_canvas.launchpad=self.lp
+        self.pad_canvas.set_layout(configs,self.launchpads,full)
+        self.pad_canvas.set_device_frames(frames)
+        if not full:
+            primary_id=next((key for key,value in self.launchpads.items() if value is self.lp),None)
+            self.pad_canvas.set_frame(frames.get(primary_id,self.current_frame))
 
     def _output_size(self,_source=None):
         configs=self._layout_configs()
@@ -1680,6 +1875,7 @@ class LaunchpadStudio(tk.Tk):
         if not self.mode_frames:
             for device in self.launchpads.values():
                 if device.connected:device.clear(force=True)
+            self._sync_canvas_preview({key:device.colors for key,device in self.launchpads.items()})
             return
         source=self.active_mode or next(reversed(self.mode_frames))
         self.apply_frame(self.mode_frames[source],source)
@@ -1696,7 +1892,8 @@ class LaunchpadStudio(tk.Tk):
         routed=route_frames(configs,pads,self.mode_frames,link_mode,source)
         primary_id=next((key for key,value in self.launchpads.items() if value is self.lp),None)
         if primary_id in routed:
-            self.current_frame=routed[primary_id]; self.pad_canvas.set_frame(self.current_frame)
+            self.current_frame=routed[primary_id]
+        self._sync_canvas_preview(routed)
         for device_id,adapted in routed.items():
             try:self.launchpads[device_id].set_frame(adapted)
             except Exception as exc:
@@ -1783,7 +1980,8 @@ class LaunchpadStudio(tk.Tk):
     def _stop_all_and_clear(self):
         self._stop_all(False)
         for device in self.launchpads.values():device.clear(force=True)
-        blank={xy:(0,0,0) for xy in self.lp.pads}; self.current_frame=blank; self.pad_canvas.set_frame(blank)
+        blank={xy:(0,0,0) for xy in self.lp.pads}; self.current_frame=blank
+        self._sync_canvas_preview({key:device.colors for key,device in self.launchpads.items()})
         self.set_status("所有灯光功能已结束，全部 Launchpad 已熄灯")
 
     def _tray_image(self):

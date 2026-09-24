@@ -6,7 +6,7 @@ const visualStyles = ["频谱","对称频谱","波形","脉冲","涟漪","星云
 const macroActions = ["热键","输入文字","打开文件/程序","打开网址","执行命令","PowerShell","媒体控制","按键序列","鼠标操作","系统操作","设置音量","组合动作"];
 let token = new URLSearchParams(location.search).get("token") || localStorage.getItem("launchpadPin") || "";
 let ws = null, state = null, reconnectTimer = null, selectedMacro = null, lyricsKey = "";
-let deviceDraft = [], deviceDraftDirty = false, deviceStateSignature = "", devicePendingUntil = 0;
+let deviceDraft = [], deviceDraftDirty = false, deviceStateSignature = "", devicePendingUntil = 0, deviceTileDrag = null, layoutLinkMode = "扩展画布";
 const dragging = new Set();
 
 function options(el, values, selected, labelKey=null, valueKey=null) {
@@ -180,48 +180,85 @@ function renderMacros() {
   if(selectedMacro){const fresh=macros.find(x=>x.x===selectedMacro.x&&x.y===selectedMacro.y);if(fresh)selectMacro(fresh);}
 }
 
-function preferredPort(values, used) {
-  const available=values.map((name,index)=>({name,index})).filter(item=>!used.has(item.index));
-  const preferred=available.find(item=>/launchpad|lpx|lpmini|lppro/i.test(item.name));
-  return (preferred||available[0]||{index:-1}).index;
+function commitDeviceLayout() {
+  command("device.layout.update",{link_mode:layoutLinkMode,devices:deviceDraft.map(item=>({id:item.id,x:Number(item.x),y:Number(item.y),mode:item.mode}))});
+  deviceDraftDirty=false;devicePendingUntil=Date.now()+1000;
 }
 
-function freshDevice() {
-  const lp=state?.launchpad||{}, usedInputs=new Set(deviceDraft.map(item=>Number(item.input_index))), usedOutputs=new Set(deviceDraft.map(item=>Number(item.output_index)));
-  let suffix=1; while(deviceDraft.some(item=>item.id===`lp${suffix}`))suffix++;
-  return {id:`lp${suffix}`,number:deviceDraft.length+1,x:deviceDraft.length,y:0,mode:"性能监控",model:"auto",
-    input_index:preferredPort(lp.inputs||[],usedInputs),output_index:preferredPort(lp.outputs||[],usedOutputs),connected:false};
+function renderDeviceLayoutHost(host, marginCells=0, connectedOnly=false) {
+  host.innerHTML="";
+  const items=connectedOnly?deviceDraft.filter(item=>item.connected):deviceDraft;
+  if(!items.length){host.textContent=connectedOnly?"暂无已连接的 Launchpad":"扫描后将在这里显示 Launchpad";return;}
+  const xs=items.map(item=>Number(item.x)||0), ys=items.map(item=>Number(item.y)||0);
+  const minX=Math.max(-8,Math.min(...xs)-marginCells), minY=Math.max(-8,Math.min(...ys)-marginCells), maxX=Math.min(8,Math.max(...xs)+marginCells), maxY=Math.min(8,Math.max(...ys)+marginCells);
+  const width=maxX-minX+1, height=maxY-minY+1;
+  host.style.gridTemplateColumns=`repeat(${width},minmax(112px,1fr))`; host.style.gridTemplateRows=`repeat(${height},132px)`;
+  items.forEach(item=>{
+    const tile=document.createElement("div"); tile.className=`device-tile${item.connected?" connected":""}`;
+    tile.style.gridColumn=String((Number(item.x)||0)-minX+1); tile.style.gridRow=String((Number(item.y)||0)-minY+1);
+    const heading=document.createElement("div");heading.className="device-tile-heading";heading.innerHTML=`<strong>LP ${item.number}</strong><small>${item.x},${item.y}${layoutLinkMode==="独立模式"?` · ${item.mode}`:""}</small>`;
+    const board=document.createElement("div");board.className="led-board";
+    for(let index=0;index<100;index++){
+      const led=document.createElement("i"), x=index%10-1, y=Math.floor(index/10);led.dataset.device=item.id;led.dataset.led=String(index);led.className="led";
+      if(y===0||y===9||x===-1||x===8)led.classList.add("control");board.appendChild(led);
+    }
+    tile.append(heading,board);host.appendChild(tile);
+    tile.onpointerdown=event=>{
+      if(event.button!==0)return;
+      const style=getComputedStyle(host), gap=parseFloat(style.columnGap)||0, padX=parseFloat(style.paddingLeft)||0, padY=parseFloat(style.paddingTop)||0;
+      const cellW=(host.scrollWidth-padX-(parseFloat(style.paddingRight)||0)-gap*(width-1))/width;
+      const cellH=(host.scrollHeight-padY-(parseFloat(style.paddingBottom)||0)-(parseFloat(style.rowGap)||0)*(height-1))/height;
+      const ghost=document.createElement("div");ghost.className="device-drop-target";ghost.style.gridColumn=tile.style.gridColumn;ghost.style.gridRow=tile.style.gridRow;host.appendChild(ghost);
+      deviceTileDrag={item,tile,ghost,host,minX,minY,width,height,gap,rowGap:parseFloat(style.rowGap)||0,padX,padY,cellW,cellH,targetX:Number(item.x)||0,targetY:Number(item.y)||0,swapWith:null,pointerId:event.pointerId};
+      tile.classList.add("dragging");tile.setPointerCapture(event.pointerId);event.preventDefault();
+    };
+    tile.onpointermove=event=>{
+      const drag=deviceTileDrag;if(!drag||drag.tile!==tile)return;
+      const rect=host.getBoundingClientRect(), column=Math.max(0,Math.min(drag.width-1,Math.floor((event.clientX-rect.left+host.scrollLeft-drag.padX)/(drag.cellW+drag.gap))));
+      const row=Math.max(0,Math.min(drag.height-1,Math.floor((event.clientY-rect.top+host.scrollTop-drag.padY)/(drag.cellH+drag.rowGap))));
+      drag.targetX=drag.minX+column;drag.targetY=drag.minY+row;
+      drag.swapWith=deviceDraft.find(other=>other!==drag.item&&Number(other.x)===drag.targetX&&Number(other.y)===drag.targetY)||null;
+      drag.ghost.style.gridColumn=String(column+1);drag.ghost.style.gridRow=String(row+1);drag.ghost.classList.toggle("swap",!!drag.swapWith);
+    };
+    const finishDrag=event=>{
+      const drag=deviceTileDrag;if(!drag||drag.tile!==tile)return;
+      const oldX=Number(drag.item.x)||0, oldY=Number(drag.item.y)||0;
+      if(drag.swapWith){drag.swapWith.x=oldX;drag.swapWith.y=oldY;}
+      drag.item.x=drag.targetX;drag.item.y=drag.targetY;deviceDraftDirty=true;
+      deviceTileDrag=null;renderDeviceEditor();commitDeviceLayout();event.preventDefault();
+    };
+    tile.onpointerup=finishDrag;tile.onpointercancel=finishDrag;
+  });
 }
 
 function renderDeviceLayout() {
-  const host=$("device-layout"); host.innerHTML="";
-  if(!deviceDraft.length){host.textContent="尚未添加 Launchpad";return;}
-  const xs=deviceDraft.map(item=>Number(item.x)||0), ys=deviceDraft.map(item=>Number(item.y)||0), minX=Math.min(...xs), minY=Math.min(...ys);
-  const width=Math.max(...xs)-minX+1, height=Math.max(...ys)-minY+1;
-  host.style.gridTemplateColumns=`repeat(${width},minmax(72px,1fr))`; host.style.gridTemplateRows=`repeat(${height},72px)`;
-  deviceDraft.forEach(item=>{
-    const tile=document.createElement("div"); tile.className=`device-tile${item.connected?" connected":""}`;
-    tile.style.gridColumn=String((Number(item.x)||0)-minX+1); tile.style.gridRow=String((Number(item.y)||0)-minY+1);
-    const title=document.createElement("span"); title.textContent=`LP ${item.number}`; const detail=document.createElement("small"); detail.textContent=`${item.x},${item.y} · ${item.mode}`;
-    tile.append(title,detail); host.appendChild(tile);
+  renderDeviceLayoutHost($("device-layout"),1,false);
+  renderDeviceLayoutHost($("live-layout"),0,true);
+  updateDeviceLedColors();
+}
+
+function updateDeviceLedColors() {
+  const devices=new Map((state?.launchpad?.devices||[]).map(item=>[String(item.id),item]));
+  document.querySelectorAll(".led[data-device]").forEach(led=>{
+    const value=devices.get(led.dataset.device)?.led_grid?.[Number(led.dataset.led)]||"";
+    led.classList.toggle("missing",!value);led.style.background=value?`#${value}`:"transparent";
   });
 }
 
 function renderDeviceEditor() {
   const lp=state?.launchpad||{}, host=$("device-list"); host.innerHTML="";
-  const ports=(values)=>values.map((name,index)=>({name,index}));
-  deviceDraft.forEach((item,index)=>{
+  deviceDraft.forEach(item=>{
     const card=document.createElement("div"); card.className="device-card";
-    card.innerHTML=`<div class="device-card-head"><div><strong></strong> <span class="status-text"></span></div><div class="device-actions"><button class="identify">显示编号</button><button class="remove danger">移除</button></div></div><div class="device-grid"><label>编号<input class="number" type="number" min="1" max="99"></label><label>X<input class="x" type="number" min="-8" max="8"></label><label>Y<input class="y" type="number" min="-8" max="8"></label><label class="span2">分配模式<select class="mode"></select></label><label>型号<select class="model"></select></label><label class="span3">MIDI 输入<select class="input"></select></label><label class="span3">MIDI 输出<select class="output"></select></label></div>`;
+    card.innerHTML=`<div class="device-card-head"><div><strong></strong> <span class="status-text"></span></div><div class="device-actions"><button class="identify">显示编号</button></div></div><p class="device-summary"></p>`;
     card.querySelector("strong").textContent=`Launchpad ${item.number}`;
     const status=card.querySelector(".status-text"); status.textContent=item.connected?"已连接":"未连接"; status.classList.toggle("connected",!!item.connected);
-    [["number","number"],["x","x"],["y","y"]].forEach(([className,key])=>{const input=card.querySelector(`.${className}`);input.value=item[key];input.oninput=()=>{item[key]=Number(input.value);deviceDraftDirty=true;card.querySelector("strong").textContent=`Launchpad ${item.number}`;renderDeviceLayout();};});
-    const mode=card.querySelector(".mode"); options(mode,lp.mode_sources||[],item.mode,null,null); mode.onchange=()=>{item.mode=mode.value;deviceDraftDirty=true;renderDeviceLayout();};
-    const model=card.querySelector(".model"); options(model,lp.models||[],item.model||"auto","name","key"); model.onchange=()=>{item.model=model.value;deviceDraftDirty=true;};
-    const input=card.querySelector(".input"); options(input,ports(lp.inputs||[]),item.input_index,"name","index"); input.onchange=()=>{item.input_index=Number(input.value);deviceDraftDirty=true;};
-    const output=card.querySelector(".output"); options(output,ports(lp.outputs||[]),item.output_index,"name","index"); output.onchange=()=>{item.output_index=Number(output.value);deviceDraftDirty=true;};
+    const model=item.model_name||(lp.models||[]).find(entry=>entry.key===item.model)?.name||item.model||"自动识别";
+    card.querySelector(".device-summary").textContent=`${model} · 位置 (${item.x}, ${item.y})`;
+    if(layoutLinkMode==="独立模式"){
+      const row=document.createElement("div");row.className="device-mode-row";row.innerHTML="<label>运行功能</label><select class=\"mode\"></select>";card.appendChild(row);
+      const mode=row.querySelector(".mode");options(mode,lp.mode_sources||[],item.mode,null,null);mode.onchange=()=>{item.mode=mode.value;deviceDraftDirty=true;renderDeviceLayout();commitDeviceLayout();};
+    }
     card.querySelector(".identify").onclick=()=>command("device.identify",{id:item.id});
-    card.querySelector(".remove").onclick=()=>{deviceDraft.splice(index,1);deviceDraftDirty=true;renderDeviceEditor();renderDeviceLayout();};
     host.appendChild(card);
   });
   renderDeviceLayout();
@@ -229,13 +266,16 @@ function renderDeviceEditor() {
 
 function renderSettings() {
   const lp=state.launchpad||{};
-  const signature=JSON.stringify({enabled:lp.multi_enabled,link_mode:lp.link_mode,devices:lp.devices||[],inputs:lp.inputs||[],outputs:lp.outputs||[]});
+  const signature=JSON.stringify({enabled:lp.multi_enabled,link_mode:lp.link_mode,devices:(lp.devices||[]).map(({led_grid,...item})=>item),inputs:lp.inputs||[],outputs:lp.outputs||[]});
   if(!deviceDraftDirty && Date.now()>=devicePendingUntil && signature!==deviceStateSignature){
     deviceStateSignature=signature; deviceDraft=(lp.devices||[]).map(item=>({...item}));
-    if(!deviceDraft.length)deviceDraft=[freshDevice()];
-    $("multi-enabled").checked=!!lp.multi_enabled; options($("link-mode"),lp.link_modes||["扩展画布","复制画面","独立模式"],lp.link_mode||"扩展画布",null,null);
+    layoutLinkMode=lp.link_mode||"扩展画布";
     renderDeviceEditor();
   }
+  document.querySelectorAll("[data-link]").forEach(button=>button.classList.toggle("active",button.dataset.link===layoutLinkMode));
+  const connected=(lp.devices||[]).filter(item=>item.connected);
+  if(connected.length){const xs=connected.map(item=>Number(item.x)||0),ys=connected.map(item=>Number(item.y)||0);$("canvas-size").textContent=`${connected.length} 台 · ${(Math.max(...xs)-Math.min(...xs)+1)*8}×${(Math.max(...ys)-Math.min(...ys)+1)*8}`;}else $("canvas-size").textContent="未连接";
+  updateDeviceLedColors();
   $("server-address").textContent=`${location.protocol}//${location.host}/ · ${state.product_name||"Launchpad Studio"} ${state.app_version||""}`;
 }
 
@@ -268,19 +308,9 @@ bindRange("system-volume","system_media.volume",Number,55); $("system-mute").onc
 options($("macro-action"),macroActions,"热键",null,null); $("macro-mode").onclick=()=>command("macro.start");
 $("macro-save").onclick=()=>{if(selectedMacro)command("macro.save",{x:selectedMacro.x,y:selectedMacro.y,action:$("macro-action").value,value:$("macro-value").value,color:$("macro-color").value});}; $("macro-test").onclick=()=>{if(selectedMacro)command("macro.trigger",{x:selectedMacro.x,y:selectedMacro.y});}; $("macro-clear").onclick=()=>{if(selectedMacro)command("macro.clear",{x:selectedMacro.x,y:selectedMacro.y});};
 
-$("multi-enabled").onchange=()=>{deviceDraftDirty=true;}; $("link-mode").onchange=()=>{deviceDraftDirty=true;};
 $("device-refresh").onclick=()=>command("device.refresh");
-$("device-add").onclick=()=>{deviceDraft.push(freshDevice());deviceDraftDirty=true;$("multi-enabled").checked=true;renderDeviceEditor();};
-$("device-apply").onclick=()=>{
-  if(!deviceDraft.length)return alert("请至少添加一台 Launchpad。");
-  if(deviceDraft.some(item=>Number(item.input_index)<0||Number(item.output_index)<0))return alert("请为每台设备选择 MIDI 输入和输出端口。");
-  const numbers=deviceDraft.map(item=>Number(item.number)), inputs=deviceDraft.map(item=>Number(item.input_index)), outputs=deviceDraft.map(item=>Number(item.output_index));
-  if(new Set(numbers).size!==numbers.length)return alert("每台 Launchpad 必须使用不同编号。");
-  if(new Set(inputs).size!==inputs.length||new Set(outputs).size!==outputs.length)return alert("同一个 MIDI 端口不能分配给多台 Launchpad。");
-  if($("link-mode").value==="扩展画布"&&new Set(deviceDraft.map(item=>`${item.x},${item.y}`)).size!==deviceDraft.length)return alert("扩展画布中的设备位置不能重叠。");
-  command("device.multi.apply",{enabled:$("multi-enabled").checked,link_mode:$("link-mode").value,devices:deviceDraft.map(item=>({id:item.id,number:Number(item.number),x:Number(item.x),y:Number(item.y),mode:item.mode,model:item.model,input_index:Number(item.input_index),output_index:Number(item.output_index)}))});
-  deviceDraftDirty=false;devicePendingUntil=Date.now()+1200;
-};
+document.querySelectorAll("[data-link]").forEach(button=>button.onclick=()=>{layoutLinkMode=button.dataset.link;deviceDraftDirty=true;renderDeviceEditor();commitDeviceLayout();});
+$("device-auto-connect").onclick=()=>command("device.auto_connect");
 $("device-test").onclick=()=>command("app.test_lights");
 $("forget-pin").onclick=()=>{localStorage.removeItem("launchpadPin");token="";if(ws)ws.close();$("pair").classList.remove("hidden");};
 connect();

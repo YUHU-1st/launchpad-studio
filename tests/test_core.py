@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 import numpy as np
 
 from core.audio_engine import reactive_frame
-from core.launchpad import MODELS, LaunchpadDevice, detect_model, is_launchpad_port
+from core.launchpad import MODELS, LaunchpadDevice, detect_model, is_launchpad_control_port, is_launchpad_port
 from core.macros import tap_hotkey
 from core.miniapps import SnakeGame, WhackAMole, calendar_frame, clock_frame, weather_frame
 from core.multi_launchpad import LINK_EXTEND, LINK_INDEPENDENT, canvas_geometry, normalize_configs, number_frame, route_frames
@@ -43,6 +43,9 @@ class LaunchpadModelTests(unittest.TestCase):
     def test_windows_abbreviated_port_names_are_detected(self):
         self.assertTrue(is_launchpad_port("LPX MIDI"))
         self.assertTrue(is_launchpad_port("MIDIIN2 (LPMiniMK3 MIDI)"))
+        self.assertTrue(is_launchpad_control_port("LPX MIDI"))
+        self.assertFalse(is_launchpad_control_port("MIDIIN2 (LPX MIDI)"))
+        self.assertFalse(is_launchpad_control_port("Launchpad Pro MK3 DAW"))
         self.assertEqual(detect_model("LPX MIDI").key,"x")
         self.assertEqual(detect_model("LPMiniMK3 MIDI").key,"mini_mk3")
         self.assertEqual(detect_model("LPProMK3 MIDI").key,"pro_mk3")

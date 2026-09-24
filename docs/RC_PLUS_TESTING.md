@@ -274,3 +274,12 @@ Before release, exercise the real RC Plus through the Android UI for:
 Do not add or test mobile game controls; those are intentionally out of scope.
 
 Final result (2026-09-14): every non-game section above passed through the RC Plus WebView, including reconnect after server restart, macro configuration, presets, live WASAPI input, weather, blackout, master volume/mute, and output switching. The original audio output, 100% volume, and unmuted state were restored; the Android crash buffer was empty, and the packaged Windows API passed valid-PIN and invalid-PIN checks.
+
+## Live Matrix 2.1.0 regression (2026-09-25)
+
+- Launchpad X and Launchpad MK2 were connected together; automatic discovery correctly ignored the Launchpad X DAW companion port and reported two physical devices.
+- The desktop rendered and drove a live 16×8 extended performance canvas, kept it running while the Layout Settings page was opened, swapped device positions by drag, restored the original arrangement, and blacked out both units.
+- The Android 10 DJI RC Plus installed version `2.1.0` (`versionCode 4`) and connected to the live desktop service through its real WebView.
+- The RC Plus showed two live device tiles and 200 standardized LED preview cells without horizontal page overflow. Dark select controls rendered with high-contrast text.
+- Mirror and Extended routing changes sent from the RC Plus reached the desktop and were reflected in returned state. Independent-only device selectors were also verified.
+- The final signed release APK installed and cold-started successfully; the Android crash buffer remained empty.

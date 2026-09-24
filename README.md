@@ -25,7 +25,7 @@ The overview covers performance, macros, video, music, live audio, clock/calenda
 从 [最新 Release](https://github.com/YUHU-1st/launchpad-studio/releases/latest) 下载 Windows x64 压缩包，解压后运行 `LaunchpadStudio.exe`，无需安装 Python。
 
 1. 连接 Launchpad，并关闭可能独占 MIDI 端口的 Ableton 等软件。
-2. 启动程序，使用自动型号识别，或手动选择设备型号及 MIDI 输入/输出。
+2. 启动程序，进入 **布局设置**，点击“扫描并连接全部 Launchpad”。软件会自动识别型号并匹配 MIDI 输入/输出。
 3. 打开需要的页面完成设置，然后点击“开始”“播放”或“启用”让该模式接管灯光。
 
 仅浏览其他模式页面不会打断当前灯光、音频、游戏或性能监控。关闭主窗口后软件继续在系统托盘运行；右键托盘图标可重新打开或完全退出。顶部的“全部停止并熄灯”可以立即结束所有活动并关闭全部 LED。
@@ -42,9 +42,11 @@ The overview covers performance, macros, video, music, live audio, clock/calenda
 
 ### 多 Launchpad 设置
 
-打开顶部 **设备设置**，为每台设备选择独立的 MIDI 输入、输出和型号，并设置编号及 X/Y 位置。点击 **用灯光显示编号** 会在对应实机上显示编号；选择 **扩展画布** 可按布局拼接更大的像素区域，选择 **复制画面** 可同步相同灯效，选择 **独立模式** 后可为每台设备指定功能，再分别进入相应页面点击开始。独立模式中的停止按钮只停止当前功能，顶部“全部停止并熄灯”仍会关闭所有设备。
+**布局设置**现在是与性能监控、音乐演示并列的一级页面。点击“扫描并连接全部 Launchpad”后，软件自动识别设备、配对 MIDI 端口并编号；点击“在实机显示编号”可用 LED 数字辨认设备。桌面中央在所有页面始终显示实际连接设备的完整灯光画布，比例随横向、纵向或不规则布局自动变化，直接拖动板块即可移动；拖到另一台设备上会交换位置。
 
-Android 客户端和手机网页的 **设备** 页面提供同一套 Matrix 编辑器：可预览相对布局、增删设备、设置编号与坐标、分配模式和型号、选择 MIDI 端口、用灯光识别实机，并直接应用连接配置。
+**扩展画布**会把全部设备拼成一块宽幅或高幅像素区域，**复制画面**会同步相同灯效，这两种联动都由普通功能页面统一启动和切换，不再逐台分配。只有选择 **独立模式** 后，布局页面才显示每台设备的功能选择。独立模式中的停止按钮只停止当前功能，顶部“全部停止并熄灯”仍会关闭所有设备。
+
+Android 客户端和手机网页提供同一套 **布局** 页面，并在所有标签顶部持续显示各实机的实时 LED 状态。手机端同样支持一键扫描连接、图形化切换扩展/复制/独立、拖动移动或交换设备、独立模式分配功能，以及用灯光显示实机编号。
 
 ### 主要功能
 
@@ -55,7 +57,7 @@ Android 客户端和手机网页的 **设备** 页面提供同一套 Matrix 编�
 - **音乐灯光秀**：离线分析 BPM、情绪、能量和风格，提供频谱、波形、涟漪、星云、火焰、隧道等多种灯效并与声音同步。
 - **实时拾音**：支持麦克风和 Windows WASAPI 系统回放，提供频率范围、响度范围、灵敏度、噪声阈值、速度和扩散等低延迟参数。
 - **参数与预设**：自动记忆上次设置，支持恢复默认、命名预设、最近预设，以及音乐、拾音和视频模式间复制粘贴兼容参数。
-- **多 Launchpad 画布**：可连接并编号多台 Launchpad，以 X/Y 坐标设置相对位置；支持扩展画布、复制画面和独立模式。扩展模式会生成原生宽幅频谱、性能灯柱和像素视频，独立模式可让各设备同时运行不同功能且按键输入互不干扰；“用灯光显示编号”可快速辨认实机。
+- **多 Launchpad 画布**：一键发现、连接并编号多台 Launchpad；桌面与手机端在每个模式都显示实际 LED 拼接画布，并可直接拖动移动或交换设备。扩展模式会生成原生宽幅频谱、性能灯柱和像素视频；复制模式同步灯效；独立模式才显示逐台功能分配，且各设备按键输入互不干扰。
 - **桌面工具**：数字时钟、日历、免密钥实时天气和专注计时器。
 - **解压游戏**：可调难度与自动关卡的穿墙贪吃蛇、打地鼠、得分庆祝灯效和实时计分板。
 - **自动谱面音游**：导入 WAV、MP3、OGG、FLAC 或 AIFF 后，软件预先识别节拍、瞬态和频段并自动生成谱面。瀑布音游与环形街机风格音游均支持简单/普通/困难、1–5 级音符速度、4–8 个琴键、暂停/继续、连击、判定、准确率和最高分。
@@ -177,7 +179,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1
 Download the Windows x64 package from the [latest release](https://github.com/YUHU-1st/launchpad-studio/releases/latest), extract it, and run `LaunchpadStudio.exe`. Python is not required.
 
 1. Connect a Launchpad and close Ableton or any application that may own its MIDI ports.
-2. Start Launchpad Studio and use automatic model detection, or select the model and MIDI ports manually.
+2. Open **Layout Settings** and press **Scan and Connect All Launchpads**. Models and MIDI input/output pairs are detected automatically.
 3. Configure a page, then press its Start, Play, or Enable button to hand LED ownership to that mode.
 
 Browsing another page does not interrupt the current lighting, audio, game, or performance monitor. Closing the main window keeps the service in the notification area. Use the tray menu to reopen or exit, or press **Stop All and Black Out** in the header to end every activity and switch off all LEDs immediately.
@@ -190,9 +192,11 @@ The **Windows Media** view uses Windows system media sessions for compatible pla
 
 ### Multi-Launchpad setup
 
-Open **Device Settings**, select a dedicated MIDI input/output and model for every unit, then assign its number and X/Y tile position. **Show Number on LEDs** identifies the physical unit. Use **Extended Canvas** for a larger pixel surface, **Mirror** for identical output, or **Independent Mode** to assign different functions and start them from their normal pages. In independent mode, each page's Stop button affects only that function; the header's Stop All and Black Out action still clears every device.
+**Layout Settings** is now a first-level page alongside Performance and Music. Press **Scan and Connect All Launchpads** to detect units, pair their MIDI ports, and number them automatically. **Show Number on LEDs** identifies a physical unit. The central desktop canvas remains visible in every mode, shows the live LED state of the complete connected layout, scales to horizontal, vertical, or irregular arrangements, and lets you drag a tile to move it or drop it on another unit to swap positions.
 
-The Android client and mobile web remote expose the same Matrix editor under **Devices**: preview the relative layout, add or remove units, edit numbers and coordinates, assign modes/models/MIDI ports, identify hardware with LED digits, and apply the connection directly from the phone.
+**Extended Canvas** combines units into a wide or tall pixel surface, while **Mirror** sends the same show to every unit. Both follow whichever normal feature page is started, so there is no per-device assignment. Per-device function selectors appear only in **Independent Mode**. Each independent page's Stop action affects only that function; **Stop All and Black Out** still clears every unit.
+
+The Android client and mobile web remote provide the same simplified **Layout** page and keep an actual live LED composite above every tab. They support one-tap discovery, graphical routing choices, drag-to-move and drag-to-swap, independent-only function assignment, and on-device numeric identification.
 
 ### Highlights
 
@@ -203,7 +207,7 @@ The Android client and mobile web remote expose the same Matrix editor under **D
 - **Analyzed music shows:** offline BPM, mood, energy and style analysis with synchronized spectrum, waveform, ripple, nebula, flame, tunnel, and other visual styles.
 - **Low-latency live audio:** microphone and Windows WASAPI loopback capture with frequency, loudness, sensitivity, gate, speed, and spread controls.
 - **Persistent parameters and presets:** automatic restore, defaults, named and recent presets, plus compatible parameter copy/paste across music, live audio, and video.
-- **Multi-Launchpad canvas:** connect and number multiple units, place them on an X/Y tile grid, and choose extended, mirrored, or independent routing. Extended layouts render native wide spectra, performance bars, and pixel video; independent layouts can run different modes concurrently without crossing pad input. A numeric LED identifier makes physical units easy to locate.
+- **Multi-Launchpad canvas:** discover, connect, and number multiple units in one step. Desktop and mobile show the actual composite LED state in every mode and let tiles be moved or swapped by dragging. Extended layouts render native wide spectra, performance bars, and pixel video; Mirror synchronizes output; Independent alone exposes per-device function assignment without crossing pad input.
 - **Desktop utilities:** digital clock, calendar, key-free live weather, and a focus timer.
 - **Casual games:** difficulty levels, automatic stages, wrap-around Snake, slower Whack-a-Mole, live scoreboards, and score celebration effects.
 - **Auto-chart rhythm games:** import WAV, MP3, OGG, FLAC, or AIFF and analyze beats, transients, and frequency bands before play. Waterfall and radial arcade-style games support Easy/Normal/Hard charts, note speed 1–5, 4–8 lanes, pause/resume, combo, timing grades, accuracy, and high scores.

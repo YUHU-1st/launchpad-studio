@@ -81,6 +81,12 @@ def is_launchpad_port(name: str) -> bool:
     return any(marker in compact for marker in ("launchpad", "lpx", "lpmini", "lppro"))
 
 
+def is_launchpad_control_port(name: str) -> bool:
+    """Return the user/programmer MIDI port, excluding modern DAW companion ports."""
+    compact = "".join(character for character in name.casefold() if character.isalnum())
+    return is_launchpad_port(name) and "daw" not in compact and not compact.startswith(("midiin2", "midiout2"))
+
+
 def detect_model(*names: str, preferred: str = "auto") -> LaunchpadModel:
     if preferred in MODEL_BY_KEY:
         return MODEL_BY_KEY[preferred]

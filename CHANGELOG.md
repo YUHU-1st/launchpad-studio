@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.0 - 2026-09-25 — Live Matrix
+
+- Added an always-on, proportionally scaled live composite preview of every connected Launchpad to every desktop and Android/LAN mode.
+- Added direct drag-to-move and drag-to-swap layout editing from the live desktop and mobile canvases.
+- Replaced manual MIDI-port setup with one-tap Launchpad discovery and connection.
+- Promoted Layout Settings to a top-level desktop/mobile page with graphical Extended, Mirror, and Independent routing choices.
+- Removed per-device mode assignment from Extended and Mirror routing; it now appears only when Independent mode is selected.
+- Streamed the actual LED state of every connected device to the mobile preview and corrected dark-theme select/dropdown contrast.
+
 ## 2.0.0 - 2026-09-23 — Matrix
 
 - Added multi-Launchpad layouts with persistent device numbers, MIDI ports, models and X/Y tile positions.

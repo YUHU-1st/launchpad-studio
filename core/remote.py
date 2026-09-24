@@ -153,7 +153,7 @@ class RemoteServer:
         version_file = self.web_root.parent / "VERSION"
         return web.json_response({
             "name": "Launchpad Studio 2 · Matrix Remote",
-            "version": version_file.read_text(encoding="utf-8").strip() if version_file.exists() else "2.0.0",
+            "version": version_file.read_text(encoding="utf-8").strip() if version_file.exists() else "2.1.0",
             "auth": "pin",
             "port": self.port,
         })

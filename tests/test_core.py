@@ -5,10 +5,11 @@ import comtypes
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import numpy as np
 
+from app import LaunchpadStudio
 from core.audio_engine import reactive_frame
 from core.launchpad import MODELS, LaunchpadDevice, detect_model, is_launchpad_control_port, is_launchpad_port
 from core.macros import tap_hotkey
@@ -56,6 +57,11 @@ class LaunchpadModelTests(unittest.TestCase):
         self.assertEqual(device.out.sysex_messages[-1][:7],bytes([240,0,32,41,2,12,3]))
         device.set_model("s"); device.set_frame({(0,8):(20,80,220)},force=True)
         self.assertTrue(device.out.short_messages)
+
+    def test_launchpad_x_button_events_reach_the_input_callback(self):
+        events=[]; device=LaunchpadDevice(lambda *event:events.append(event),"x")
+        device._midi_event(0x90,81,127); device._midi_event(0x80,81,0); device._midi_event(0xB0,91,127)
+        self.assertEqual(events,[(0,1,True,127),(0,1,False,0),(0,0,True,127)])
 
 
 class MultiLaunchpadTests(unittest.TestCase):
@@ -116,6 +122,21 @@ class MultiLaunchpadTests(unittest.TestCase):
         overlap=[dict(raw[0],x=0),dict(raw[1],x=0)]
         with self.assertRaisesRegex(ValueError,"位置重叠"):
             normalize_configs(overlap,["LPX MIDI","Launchpad MK2"],["Synth","LPX MIDI","Launchpad MK2"],{"auto","x","mk2"},LINK_EXTEND)
+
+
+class MacroInputTests(unittest.TestCase):
+    def test_launchpad_x_macro_uses_physical_pad_and_runs_on_macro_page(self):
+        macro={"action":"热键","value":"CTRL+S","color":"#7c5cff"}
+        studio=LaunchpadStudio.__new__(LaunchpadStudio)
+        studio.lp=LaunchpadDevice(model="x")
+        studio.settings_store=SimpleNamespace(data={"macros":{"mk2:81":macro},"macro_control_enabled":False})
+        studio.pad_canvas=SimpleNamespace(select_pad=Mock())
+        studio.macro_exec=SimpleNamespace(execute=Mock())
+        studio.set_status=Mock(); studio.mode="宏按键"; studio.active_mode="性能监控"
+        studio.active_modes={"性能监控"}; studio.active_utility=None
+        studio.multi_cfg={"enabled":False}; studio._handle_pad_ui(0,1,True,"lp1")
+        studio.macro_exec.execute.assert_called_once_with(macro)
+        self.assertEqual(studio._macro_key(0,1),"pad:0:1")
 
 
 class SettingsTests(unittest.TestCase):
@@ -216,11 +237,28 @@ class MiniAppTests(unittest.TestCase):
         snake=SnakeGame(); snake.steer((0,-1)); self.assertTrue(snake.tick())
         mole=WhackAMole(); self.assertTrue(mole.hit(mole.target)); self.assertEqual(mole.score,1)
 
+    def test_tools_and_games_render_on_the_native_extended_canvas(self):
+        now=datetime(2026,9,10,12,34,56)
+        for frame in (clock_frame(now,4,(1,2,3),(4,5,6),(16,8)),
+                      calendar_frame(now,2,(1,2,3),(4,5,6),(16,8)),weather_frame(61,22,output_size=(16,8))):
+            self.assertEqual(len(frame),152)
+            self.assertIn((15,8),frame)
+            self.assertIn((16,8),frame)
+        snake=SnakeGame(); snake.reset(16,8)
+        mole=WhackAMole(); mole.reset(8,16,8)
+        self.assertEqual((snake.width,snake.height),(16,8))
+        self.assertTrue(0<=mole.target[0]<16 and 1<=mole.target[1]<=8)
+        self.assertEqual(len(snake.frame()),152)
+        self.assertEqual(len(mole.frame()),152)
+
     def test_snake_wraps_at_every_edge(self):
         cases=(((7,4),(1,0),(0,4)),((0,4),(-1,0),(7,4)),((4,1),(0,-1),(4,8)),((4,8),(0,1),(4,1)))
         for start,direction,expected in cases:
             snake=SnakeGame(); snake.snake=[start]; snake.direction=direction; snake.next_direction=direction
             self.assertTrue(snake.tick()); self.assertEqual(snake.snake[0],expected)
+
+        snake=SnakeGame(); snake.reset(16,8); snake.snake=[(15,4)]; snake.direction=(1,0); snake.next_direction=(1,0)
+        self.assertTrue(snake.tick()); self.assertEqual(snake.snake[0],(0,4))
 
     def test_mole_difficulty_controls_available_chances(self):
         mole=WhackAMole(); mole.reset(max_misses=8)
@@ -242,6 +280,8 @@ class MiniAppTests(unittest.TestCase):
             game=RhythmGame(); game.reset(chart,3,"普通")
             note=chart.notes[0]; result=game.hit(game.targets()[note.lane],note.time)
             self.assertEqual(result,"perfect"); self.assertEqual(len(game.frame(note.time)),80)
+            wide_targets=game.targets((16,8)); self.assertGreater(max(x for x,_ in wide_targets),7)
+            self.assertEqual(len(game.frame(note.time,output_size=(16,8))),152)
 
 
 if __name__=="__main__":unittest.main()

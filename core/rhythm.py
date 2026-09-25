@@ -6,7 +6,7 @@ import math
 import numpy as np
 
 from .audio_engine import AudioAnalysis
-from .launchpad import ALL_PADS
+from .miniapps import blank
 from .performance import mix
 
 
@@ -89,12 +89,16 @@ class RhythmGame:
     @property
     def lead_time(self):return {1:3.6,2:3.0,3:2.35,4:1.8,5:1.35}[self.fall_speed]
 
-    def targets(self):
+    def targets(self, output_size=(8, 8)):
         if not self.chart:return []
+        width,height=(max(1,int(value)) for value in output_size)
         if self.chart.style=="瀑布音游":
-            return [(round(i*7/(self.chart.lanes-1)),8) for i in range(self.chart.lanes)]
-        ring=((3,1),(5,1),(7,3),(7,6),(5,8),(2,8),(0,6),(0,3))
-        return [ring[round(i*7/(self.chart.lanes-1))] for i in range(self.chart.lanes)]
+            return [(round(i*(width-1)/(self.chart.lanes-1)),height) for i in range(self.chart.lanes)]
+        center_x,center_y=(width-1)/2,(height+1)/2
+        radius_x,radius_y=max(0,(width-1)/2),max(0,(height-1)/2)
+        return [(round(center_x+radius_x*math.cos(-math.pi/2+i*2*math.pi/self.chart.lanes)),
+                 round(center_y+radius_y*math.sin(-math.pi/2+i*2*math.pi/self.chart.lanes)))
+                for i in range(self.chart.lanes)]
 
     def update(self,position):
         if not self.chart:return
@@ -104,9 +108,9 @@ class RhythmGame:
         if position>=self.chart.duration or (self.states and all(self.states) and position>self.chart.notes[-1].time+.5):
             self.running=False
 
-    def hit(self,xy,position):
+    def hit(self,xy,position,output_size=(8, 8)):
         if not self.running or not self.chart:return None
-        try:lane=self.targets().index(xy)
+        try:lane=self.targets(output_size).index(xy)
         except ValueError:
             self.misses+=1; self.combo=0; return "miss"
         choices=[(abs(note.time-position),i) for i,note in enumerate(self.chart.notes)
@@ -118,10 +122,11 @@ class RhythmGame:
         self.score+=({"perfect":1000,"great":700,"good":400}[grade])*(1+min(20,self.combo)//10)
         return grade
 
-    def frame(self,position,low=(60,80,180),high=(80,240,255),brightness=1.0):
-        frame={xy:(0,0,0) for xy in ALL_PADS}
+    def frame(self,position,low=(60,80,180),high=(80,240,255),brightness=1.0,output_size=(8, 8)):
+        width,height=(max(1,int(value)) for value in output_size)
+        frame=blank((width,height))
         if not self.chart:return frame
-        targets=self.targets(); dim=tuple(round(c*.22*brightness) for c in high)
+        targets=self.targets((width,height)); dim=tuple(round(c*.22*brightness) for c in high)
         for target in targets:frame[target]=dim
         for state,note in zip(self.states,self.chart.notes):
             if state!=0:continue
@@ -129,15 +134,17 @@ class RhythmGame:
             if not (-self.hit_window<=remaining<=self.lead_time):continue
             progress=max(0,min(1,1-remaining/self.lead_time)); color=tuple(round(c*brightness) for c in mix(low,high,progress))
             tx,ty=targets[note.lane]
-            if self.chart.style=="瀑布音游":xy=(tx,max(1,min(8,1+round(progress*7))))
+            if self.chart.style=="瀑布音游":xy=(tx,max(1,min(height,1+round(progress*(height-1)))))
             else:
-                xy=(round(3.5+(tx-3.5)*progress),round(4.5+(ty-4.5)*progress))
-                xy=(max(0,min(7,xy[0])),max(1,min(8,xy[1])))
+                center_x,center_y=(width-1)/2,(height+1)/2
+                xy=(round(center_x+(tx-center_x)*progress),round(center_y+(ty-center_y)*progress))
+                xy=(max(0,min(width-1,xy[0])),max(1,min(height,xy[1])))
             old=frame.get(xy,(0,0,0)); frame[xy]=tuple(max(a,b) for a,b in zip(old,color))
         progress=0 if not self.chart.duration else max(0,min(1,position/self.chart.duration))
-        for x in range(round(progress*8)):frame[(x,0)]=tuple(round(c*brightness) for c in high)
-        for i in range(min(8,self.combo)):frame[(8,8-i)]=tuple(round(c*brightness) for c in low)
+        for x in range(round(progress*width)):frame[(x,0)]=tuple(round(c*brightness) for c in high)
+        for i in range(min(height,self.combo)):frame[(width,height-i)]=tuple(round(c*brightness) for c in low)
         if not self.running:
             pulse=tuple(round(c*brightness) for c in high)
-            for x in range(8):frame[(x,4)]=pulse; frame[(x,5)]=pulse
+            middle=max(1,height//2)
+            for x in range(width):frame[(x,middle)]=pulse; frame[(x,min(height,middle+1))]=pulse
         return frame

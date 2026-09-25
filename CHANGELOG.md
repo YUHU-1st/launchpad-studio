@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1 - 2026-09-25
+
+- Made desktop utilities, Snake, Whack-a-Mole, Waterfall Rhythm and radial rhythm render natively across the complete multi-Launchpad canvas instead of stretching an 8×8 image.
+- Mapped presses from every tile to its real composite-canvas coordinate so food, targets and rhythm notes remain playable on every connected Launchpad.
+- Fixed Launchpad X macro presses by storing macros by physical pad position, reading older model-specific profiles, and allowing configured pads to trigger directly from the Macro Pads page.
+
 ## 2.1.0 - 2026-09-25 — Live Matrix
 
 - Added an always-on, proportionally scaled live composite preview of every connected Launchpad to every desktop and Android/LAN mode.

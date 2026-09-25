@@ -3,9 +3,6 @@ from __future__ import annotations
 import random
 from datetime import datetime
 
-from .launchpad import ALL_PADS
-
-
 FONT = {
     "0": ("111", "101", "101", "101", "111"), "1": ("010", "110", "010", "010", "111"),
     "2": ("111", "001", "111", "100", "111"), "3": ("111", "001", "111", "001", "111"),
@@ -17,8 +14,12 @@ FONT = {
 }
 
 
-def blank():
-    return {xy: (0, 0, 0) for xy in ALL_PADS}
+def blank(output_size=(8, 8)):
+    width, height = (max(1, int(value)) for value in output_size)
+    frame = {(x, y): (0, 0, 0) for y in range(1, height + 1) for x in range(width)}
+    frame.update({(x, 0): (0, 0, 0) for x in range(width)})
+    frame.update({(width, y): (0, 0, 0) for y in range(1, height + 1)})
+    return frame
 
 
 def _columns(text):
@@ -31,48 +32,61 @@ def _columns(text):
     return columns[:-1] if columns else []
 
 
-def scrolling_text(text, phase, color=(80, 220, 255), accent=(255, 80, 190)):
-    frame = blank(); cols = _columns(text)
+def scrolling_text(text, phase, color=(80, 220, 255), accent=(255, 80, 190), output_size=(8, 8)):
+    width, height = (max(1, int(value)) for value in output_size)
+    frame = blank((width, height)); cols = _columns(text)
     if not cols:return frame
-    travel = len(cols) + 8
-    offset = 8 - (phase % travel)
+    travel = len(cols) + width
+    offset = width - (phase % travel)
+    start_y = max(1, (height - 5) // 2 + 1)
     for source_x, column in enumerate(cols):
         x = source_x + offset
-        if 0 <= x < 8:
+        if 0 <= x < width:
             for py, lit in enumerate(column):
-                if lit:frame[(x, py + 2)] = color if py < 3 else accent
+                y = start_y + py
+                if lit and y <= height:frame[(x, y)] = color if py < 3 else accent
     return frame
 
 
-def clock_frame(now: datetime, phase: int, color, accent):
-    frame = scrolling_text(now.strftime("%H:%M"), phase, color, accent)
-    frame[(now.second % 8, 0)] = accent
+def clock_frame(now: datetime, phase: int, color, accent, output_size=(8, 8)):
+    width, _ = output_size
+    frame = scrolling_text(now.strftime("%H:%M"), phase, color, accent, output_size)
+    frame[(min(width - 1, now.second * width // 60), 0)] = accent
     return frame
 
 
-def calendar_frame(now: datetime, phase: int, color, accent):
-    frame = scrolling_text(now.strftime("%m-%d"), phase, color, accent)
-    for x in range(min(7, now.weekday() + 1)):frame[(x, 0)] = accent
+def calendar_frame(now: datetime, phase: int, color, accent, output_size=(8, 8)):
+    width, _ = output_size
+    frame = scrolling_text(now.strftime("%m-%d"), phase, color, accent, output_size)
+    for x in range(max(1, round((now.weekday() + 1) * width / 7))):frame[(x, 0)] = accent
     return frame
 
 
-def weather_frame(code: int, temperature: float, color=(80, 220, 255), accent=(255, 190, 40)):
-    frame = blank()
+def weather_frame(code: int, temperature: float, color=(80, 220, 255), accent=(255, 190, 40), output_size=(8, 8)):
+    width, height = (max(1, int(value)) for value in output_size)
+    frame = blank((width, height))
+    center_x, center_y = (width - 1) // 2, (height + 1) // 2
     # WMO: 0 clear, 1-3 cloud, 45/48 fog, 51-67 rain, 71-77 snow, 80-99 showers/storms.
     if code == 0:
-        for xy in ((3,3),(4,3),(3,4),(4,4),(3,2),(4,2),(2,3),(5,3),(3,5),(4,5)):
-            frame[xy]=accent
+        points=((0,0),(1,0),(0,1),(1,1),(0,-1),(1,-1),(-1,0),(2,0),(0,2),(1,2))
+        for dx,dy in points:
+            xy=(center_x+dx,center_y+dy)
+            if 0<=xy[0]<width and 1<=xy[1]<=height:frame[xy]=accent
     elif code < 50:
-        for y,width in ((3,4),(4,6),(5,5)):
-            for x in range((8-width)//2,(8-width)//2+width):frame[(x,y)]=color
+        for dy,span in ((-1,4),(0,6),(1,5)):
+            target_y=center_y+dy
+            for x in range(center_x-span//2,center_x-span//2+span):
+                if 0<=x<width and 1<=target_y<=height:frame[(x,target_y)]=color
     else:
-        for y,width in ((2,4),(3,6),(4,5)):
-            for x in range((8-width)//2,(8-width)//2+width):frame[(x,y)]=color
-        drops=((2,6),(4,6),(6,6),(3,8),(5,8))
-        for x,y in drops:
-            frame[(x,y)]=(170,220,255) if code < 70 else ((240,250,255) if code < 80 else accent)
-    level=max(0,min(8,round((temperature+20)/70*8)))
-    for i in range(level):frame[(8,8-i)]=(40+min(215,i*35),80,max(0,255-i*32))
+        for dy,span in ((-2,4),(-1,6),(0,5)):
+            for x in range(center_x-span//2,center_x-span//2+span):
+                if 0<=x<width and 1<=center_y+dy<=height:frame[(x,center_y+dy)]=color
+        drops=((-2,2),(0,2),(2,2),(-1,4),(1,4))
+        for dx,dy in drops:
+            x,y=center_x+dx,center_y+dy
+            if 0<=x<width and 1<=y<=height:frame[(x,y)]=(170,220,255) if code < 70 else ((240,250,255) if code < 80 else accent)
+    level=max(0,min(height,round((temperature+20)/70*height)))
+    for i in range(level):frame[(width,height-i)]=(40+min(215,round(i*280/max(1,height))),80,max(0,255-round(i*255/max(1,height))))
     return frame
 
 
@@ -80,12 +94,14 @@ class SnakeGame:
     def __init__(self):
         self.rng=random.Random(); self.reset()
 
-    def reset(self):
-        self.snake=[(3,5),(2,5),(1,5)]; self.direction=(1,0); self.next_direction=(1,0)
+    def reset(self, width=8, height=8):
+        self.width=max(3,int(width)); self.height=max(3,int(height))
+        head_x=max(2,self.width//2-1); head_y=self.height//2+1
+        self.snake=[(head_x-offset,head_y) for offset in range(3)]; self.direction=(1,0); self.next_direction=(1,0)
         self.food=self._food(); self.score=0; self.alive=True
 
     def _food(self):
-        choices=[(x,y) for y in range(1,9) for x in range(8) if (x,y) not in self.snake]
+        choices=[(x,y) for y in range(1,self.height+1) for x in range(self.width) if (x,y) not in self.snake]
         return self.rng.choice(choices) if choices else None
 
     def steer(self,direction):
@@ -95,9 +111,9 @@ class SnakeGame:
     def tick(self):
         if not self.alive:return False
         self.direction=self.next_direction; hx,hy=self.snake[0]
-        # The playable area is an 8 x 8 torus: leaving one edge enters from
+        # The playable area is a torus: leaving one edge enters from
         # the opposite edge.  Row zero remains reserved for direction keys.
-        head=((hx+self.direction[0])%8,((hy-1+self.direction[1])%8)+1)
+        head=((hx+self.direction[0])%self.width,((hy-1+self.direction[1])%self.height)+1)
         if head in self.snake[:-1]:
             self.alive=False; return False
         self.snake.insert(0,head)
@@ -111,12 +127,15 @@ class SnakeGame:
         return self.score//5+1
 
     def frame(self):
-        frame=blank()
+        frame=blank((self.width,self.height))
         if self.food:frame[self.food]=(255,55,95)
         for i,xy in enumerate(self.snake):frame[xy]=(110,255,120) if i else (235,255,120)
-        for x,c in enumerate(((80,130,255),(80,130,255),(80,130,255),(80,130,255))):frame[(x,0)]=c
+        for base in range(0,self.width,8):
+            for x in range(base,min(base+4,self.width)):frame[(x,0)]=(80,130,255)
         if not self.alive:
-            for i in range(8):frame[(i,i+1)]=(255,30,40); frame[(7-i,i+1)]=(255,30,40)
+            for x in range(self.width):
+                y=1+round(x*(self.height-1)/max(1,self.width-1))
+                frame[(x,y)]=(255,30,40); frame[(self.width-1-x,y)]=(255,30,40)
         return frame
 
 
@@ -124,11 +143,12 @@ class WhackAMole:
     def __init__(self):
         self.rng=random.Random(); self.reset()
 
-    def reset(self,max_misses=8):
+    def reset(self,max_misses=8,width=8,height=8):
+        self.width=max(1,int(width)); self.height=max(1,int(height))
         self.max_misses=max(1,int(max_misses))
         self.target=self._target(); self.score=0; self.misses=0; self.running=True
 
-    def _target(self):return self.rng.randrange(8),self.rng.randrange(1,9)
+    def _target(self):return self.rng.randrange(self.width),self.rng.randrange(1,self.height+1)
 
     def hit(self,xy):
         if not self.running:return False
@@ -149,13 +169,14 @@ class WhackAMole:
         return self.score//8+1
 
     def frame(self):
-        frame=blank()
+        frame=blank((self.width,self.height))
         if self.running:frame[self.target]=(255,170,30)
         else:
-            for x in range(8):frame[(x,4)]=(255,40,80); frame[(x,5)]=(255,40,80)
+            middle=max(1,self.height//2)
+            for x in range(self.width):frame[(x,middle)]=(255,40,80); frame[(x,min(self.height,middle+1))]=(255,40,80)
         # The side column is only eight pads high, so it shows the remaining
         # chances proportionally for difficulty levels with more than 8 lives.
         remaining=max(0,self.max_misses-self.misses)
-        lights=round(remaining/self.max_misses*8) if remaining else 0
-        for i in range(lights):frame[(8,8-i)]=(70,255,120)
+        lights=round(remaining/self.max_misses*self.height) if remaining else 0
+        for i in range(lights):frame[(self.width,self.height-i)]=(70,255,120)
         return frame

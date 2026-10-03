@@ -114,6 +114,7 @@ function renderVJ() {
   options($("vj-device"),v.devices||[],cfg.device,"name","name");
   options($("vj-style"),v.styles||[],cfg.style);options($("vj-palette"),["自动配色",...(state.global?.palettes||[])],cfg.palette);
   options($("vj-aspect"),v.aspects||[],cfg.aspect);options($("vj-fps"),v.fps_options||[],cfg.fps);
+  options($("vj-led_style"),v.led_styles||[],cfg.led_style);
   if(!vjOutputDirty&&Date.now()>=vjPendingUntil){
     for(const key of ["width","height"]){const el=$(`vj-${key}`);if(document.activeElement!==el)el.value=cfg[key];}
     for(const key of ["preview","alpha","map_launchpad"])$(`vj-${key}`).checked=!!cfg[key];
@@ -127,9 +128,20 @@ function renderVJ() {
     });host.dataset.signature=signature;
   }
   if(!vjOutputDirty&&Date.now()>=vjPendingUntil)host.querySelectorAll("input").forEach(el=>{if(document.activeElement!==el)el.checked=(cfg.screens||[]).includes(el.dataset.screen);});
+  const pads=$("vj-launchpads"),padSignature=JSON.stringify(v.launchpads||[]);
+  if(pads.dataset.signature!==padSignature){
+    const selected=vjOutputDirty?Array.from(pads.querySelectorAll("input:checked"),el=>el.dataset.pad):(cfg.launchpads||[]);
+    pads.replaceChildren();(v.launchpads||[]).forEach(pad=>{
+      const label=document.createElement("label");label.className="switch-row";const input=document.createElement("input");input.type="checkbox";input.dataset.pad=pad.id;input.checked=selected.includes(pad.id);input.onchange=()=>{vjOutputDirty=true;};
+      const span=document.createElement("span");span.textContent=pad.label;label.append(input,span);pads.appendChild(label);
+    });pads.dataset.signature=padSignature;
+  }
+  if(!vjOutputDirty&&Date.now()>=vjPendingUntil)pads.querySelectorAll("input").forEach(el=>{el.checked=(cfg.launchpads||[]).includes(el.dataset.pad);});
+  $("vj-led-size").textContent=`灯板原生画布 ${(v.led_size||[8,8]).join('×')} · 屏幕 ${cfg.width}×${cfg.height}（分别计算，互不影响）`;
   $("vj-state").textContent=s.running?`${s.fps||0} FPS · ${s.scene||"启动中"}`:"停止";
-  $("vj-analysis").textContent=s.running?`BPM ${s.bpm||"--"} · ${s.style||"等待音乐"} · 情绪估计：${s.mood||"--"} · 能量 ${Math.round((s.energy||0)*100)}% · ${s.audio_status||""}`:"节拍、风格、情绪根据实时音频特征估计。";
-  const specs=[["sensitivity","灵敏度",.1,4,.1],["threshold","静音阈值",0,.2,.001],["speed","运动速度",.1,3,.1],["intensity","光效强度",.1,2,.1],["detail","图形密度",.3,2,.1],["scene_seconds","自动换景秒数",4,120,1]];
+  $("vj-analysis").textContent=s.running?`BPM ${s.bpm||"--"} · ${s.style||"等待音乐"} · 情绪估计：${s.mood||"--"} · 灯板 ${s.led_style||'--'} / ${s.led_fps||0} FPS · 能量 ${Math.round((s.energy||0)*100)}% · ${s.audio_status||""}`:"节拍、风格、情绪根据实时音频特征估计。";
+  const specs=[["sensitivity","音频灵敏度",.1,4,.1],["threshold","静音阈值",0,.2,.001],["speed","屏幕运动速度",.1,3,.1],["intensity","屏幕光效强度",.1,2,.1],["detail","屏幕图形密度",.3,2,.1],["scene_seconds","自动换景秒数",4,120,1],
+    ["led_speed","灯板运动速度",.1,3,.1],["led_intensity","灯板光效强度",.1,2,.1],["led_density","灯板图形密度",.3,2,.1],["led_contrast","灯板对比度",1,5,.1],["led_threshold","灯板亮度截断",0,.9,.01]];
   const params=$("vj-params");
   if(!params.dataset.ready){specs.forEach(([key,label,min,max,step])=>{
     const row=document.createElement("label");row.textContent=label;const val=document.createElement("b");
@@ -331,15 +343,20 @@ document.querySelectorAll("[data-music]").forEach(button=>button.onclick=()=>com
 $("music-style").onchange=event=>command("music.style",event.target.value); $("music-rate").onchange=event=>command("music.rate",event.target.value); $("music-loop").onchange=event=>command("music.loop",event.target.value); bindRange("music-volume","music.volume",Number,80);
 
 $("live-device").onchange=event=>{const item=state?.live?.devices?.[Number(event.target.value)];if(item)command("live.device",item.id);}; $("live-style").onchange=event=>command("live.style",event.target.value); $("live-start").onclick=()=>command("live.start");
-for(const key of ["device","style","palette","fps"])$(`vj-${key}`).onchange=event=>command("vj.config",{[key]:key==="fps"?Number(event.target.value):event.target.value});
+for(const key of ["device","style","palette","fps","led_style"])$(`vj-${key}`).onchange=event=>command("vj.config",{[key]:key==="fps"?Number(event.target.value):event.target.value});
 $("vj-aspect").onchange=event=>{
   const aspect=event.target.value,width=Number($("vj-width").value),height=aspect==="自定义"?Number($("vj-height").value):Math.round(width*Number(aspect.split(":")[1])/Number(aspect.split(":")[0]));
   $("vj-height").value=height;command("vj.config",{aspect,width,height});
 };
 for(const key of ["width","height","preview","alpha","map_launchpad"])$(`vj-${key}`).onchange=()=>{vjOutputDirty=true;};
+$("vj-map_launchpad").onchange=()=>{
+  if($("vj-map_launchpad").checked&&!$("vj-launchpads").querySelector("input:checked"))$("vj-launchpads").querySelectorAll("input").forEach(el=>{el.checked=true;});
+  vjOutputDirty=true;
+};
 $("vj-apply").onclick=()=>{command("vj.config",{
   width:Number($("vj-width").value),height:Number($("vj-height").value),aspect:$("vj-aspect").value,
   screens:Array.from($("vj-screens").querySelectorAll("input:checked"),el=>el.dataset.screen),
+  launchpads:Array.from($("vj-launchpads").querySelectorAll("input:checked"),el=>el.dataset.pad),
   preview:$("vj-preview").checked,alpha:$("vj-alpha").checked,map_launchpad:$("vj-map_launchpad").checked
 });vjOutputDirty=false;vjPendingUntil=Date.now()+750;};
 $("vj-refresh").onclick=()=>command("vj.refresh");$("vj-start").onclick=()=>command("vj.start");$("vj-stop").onclick=()=>command("vj.stop");

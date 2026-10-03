@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.0 - 2026-10-04 — Pulse Canvas
+
+- Added twelve high-contrast, hard-edged native Launchpad VJ patterns and independent LED style, speed, intensity, density, contrast and cutoff controls, sharing screen palettes and music analysis.
+- Added explicit multi-select Launchpad targets alongside monitor targets. Native LED resolution follows only selected devices and their layout, without changing screen aspect or resolution; unselected pads keep their running mode.
+- Added LED-only operation, optional original GPU image sampling, and projection continuity when another LED mode is explicitly started in unified layouts.
+- Added matching Android/LAN selectors, separate resolution readouts, profile migration, preview media and routing/rendering tests.
+- Avoided Windows native sendfile for small mobile UI assets after observed LAN transfer timeouts.
+
 ## 2.2.0 - 2026-10-03 — Stage VJ
 
 - Added real-time GPU VJ backgrounds driven by system playback or microphone audio, with streaming beats, energy, spectral bands and explicitly heuristic style/mood estimates.

@@ -31,7 +31,7 @@ from core.miniapps import SnakeGame, WhackAMole, blank, calendar_frame, clock_fr
 from core.rhythm import RhythmGame, generate_chart
 from core.weather import WeatherService
 from core.remote import RemoteServer
-from core.vj_engine import VJController, VJ_ASPECTS, VJ_FPS, VJ_STYLES, display_targets, led_frame, validate_vj_config
+from core.vj_engine import VJController, VJ_ASPECTS, VJ_FPS, VJ_STYLES, VJ_LED_STYLES, display_targets, led_frame, validate_vj_config, vj_led_layout, vj_led_routes
 
 
 FROZEN = bool(getattr(sys,"frozen",False))
@@ -488,7 +488,8 @@ class LaunchpadStudio(tk.Tk):
             "live":{"devices":[{"id":i,"name":n} for i,n in getattr(self,"live_devices",[])],"selected":self.settings_store.data.get("live_device",""),
                     "running":bool(self.live and self.live.worker and self.live.worker.is_alive()),"detail":detail("live")},
             "vj":{"config":dict(self.settings_store.data["vj"]),"state":dict(self.vj.state),"styles":list(VJ_STYLES),
-                  "aspects":list(VJ_ASPECTS),"fps_options":list(VJ_FPS),"screens":self.vj_screens,
+                  "aspects":list(VJ_ASPECTS),"fps_options":list(VJ_FPS),"screens":self.vj_screens,"led_styles":list(VJ_LED_STYLES),
+                  "launchpads":self._vj_pad_options(),"led_size":list(self._vj_led_size()),
                   "devices":[{"id":i,"name":n} for i,n in self.vj_devices]},
             "utilities":{"allowed":["数字时钟","日历","天气","专注计时器"],"selected":self.settings_store.data["utilities"].get("selected","数字时钟"),
                          "running":bool(self.utility_running and self.active_utility in ("数字时钟","日历","天气","专注计时器")),
@@ -1360,7 +1361,7 @@ class LaunchpadStudio(tk.Tk):
             combo.bind("<<ComboboxSelected>>",lambda _e,k=key:self._vj_form_changed(k))
         if not cfg["device"] and self.vj_devices:cfg["device"]=self.vj_devices[0][1]
         choice("device","系统声音 / 麦克风",[name for _,name in self.vj_devices])
-        choice("style","画面风格",VJ_STYLES); choice("palette","色彩风格",["自动配色",*PALETTES])
+        choice("style","投屏画面风格",VJ_STYLES); choice("palette","屏幕 / 灯板共享配色",["自动配色",*PALETTES])
         row=tk.Frame(self.page,bg=BG); row.pack(fill="x",pady=(8,0))
         for key,label,values in (("aspect","画幅",VJ_ASPECTS),("fps","帧率",VJ_FPS)):
             box=tk.Frame(row,bg=BG); box.pack(side="left",fill="x",expand=True,padx=(0,4))
@@ -1369,7 +1370,7 @@ class LaunchpadStudio(tk.Tk):
             combo=ttk.Combobox(box,textvariable=var,state="readonly",values=values,width=10); combo.pack(fill="x")
             combo.bind("<<ComboboxSelected>>",lambda _e,k=key:self._vj_form_changed(k))
         resolution=tk.Frame(self.page,bg=BG); resolution.pack(fill="x",pady=(8,4))
-        tk.Label(resolution,text="输出分辨率",bg=BG,fg=MUTED).pack(side="left")
+        tk.Label(resolution,text="屏幕分辨率",bg=BG,fg=MUTED).pack(side="left")
         for key in ("width","height"):
             var=tk.StringVar(value=str(cfg[key])); self.vj_vars[key]=var
             entry=ttk.Combobox(resolution,textvariable=var,width=7,values=(1280,1920,2560,3840,7680)) if key=="width" else ttk.Entry(resolution,textvariable=var,width=7)
@@ -1381,12 +1382,22 @@ class LaunchpadStudio(tk.Tk):
         for screen in self.vj_screens:
             var=tk.BooleanVar(value=screen["id"] in cfg["screens"]); self.vj_screen_vars[screen["id"]]=var
             ttk.Checkbutton(self.page,text=screen["label"],variable=var,command=self._vj_apply_form).pack(anchor="w")
-        for key,label in (("preview","独立小窗口预览（F11 全屏，Esc 关闭）"),("alpha","启用 Alpha 通道 / 透明背景"),("map_launchpad","将同一 VJ 画面映射到 Launchpad")):
+        for key,label in (("preview","独立小窗口预览（F11 全屏，Esc 关闭）"),("alpha","启用 Alpha 通道 / 透明背景"),("map_launchpad","启用 Launchpad 原生 VJ 灯效")):
             var=tk.BooleanVar(value=cfg[key]); self.vj_vars[key]=var
-            ttk.Checkbutton(self.page,text=label,variable=var,command=self._vj_apply_form).pack(anchor="w",pady=3)
+            ttk.Checkbutton(self.page,text=label,variable=var,command=self._vj_enable_map if key=="map_launchpad" else self._vj_apply_form).pack(anchor="w",pady=3)
+        tk.Label(self.page,text="灯板目标（可多选，未选设备不受影响）",bg=BG,fg=MUTED).pack(anchor="w",pady=(8,3))
+        self.vj_pad_vars={}
+        for pad in self._vj_pad_options():
+            var=tk.BooleanVar(value=pad["id"] in cfg["launchpads"]); self.vj_pad_vars[pad["id"]]=var
+            ttk.Checkbutton(self.page,text=pad["label"],variable=var,command=self._vj_apply_form).pack(anchor="w",pady=2)
+        self.vj_led_info=tk.Label(self.page,text="",bg=BG,fg="#c8bfff",wraplength=290,justify="left")
+        self.vj_led_info.pack(anchor="w",pady=4)
+        choice("led_style","灯板光效（与投屏分离控制）",VJ_LED_STYLES)
         details=tk.Frame(self.page,bg=BG); details.pack(fill="x",pady=4)
         for key,label,lo,hi,step in (("sensitivity","音频灵敏度",.1,4,.1),("threshold","静音阈值",0,.2,.001),("speed","运动速度",.1,3,.1),
-                                    ("intensity","光效强度",.1,2,.1),("detail","图形密度",.3,2,.1),("scene_seconds","自动换景秒数",4,120,1)):
+                                    ("intensity","屏幕光效强度",.1,2,.1),("detail","屏幕图形密度",.3,2,.1),("scene_seconds","自动换景秒数",4,120,1),
+                                    ("led_speed","灯板运动速度",.1,3,.1),("led_intensity","灯板光效强度",.1,2,.1),("led_density","灯板图形密度",.3,2,.1),
+                                    ("led_contrast","灯板对比度",1,5,.1),("led_threshold","灯板亮度截断",0,.9,.01)):
             line=tk.Frame(details,bg=BG); line.pack(fill="x",pady=2)
             tk.Label(line,text=label,bg=BG,fg=MUTED,font=("Segoe UI",9)).pack(side="left")
             var=tk.StringVar(value=str(cfg[key])); self.vj_vars[key]=var
@@ -1411,36 +1422,53 @@ class LaunchpadStudio(tk.Tk):
                 self.set_status("请输入有效的输出宽度"); return
         self._vj_apply_form()
 
+    def _vj_enable_map(self):
+        if self.vj_vars["map_launchpad"].get() and not any(v.get() for v in self.vj_pad_vars.values()):
+            for var in self.vj_pad_vars.values():var.set(True)
+        self._vj_apply_form()
+
+    def _vj_pad_options(self):
+        return [{"id":str(item["id"]),"label":f"#{item.get('number',1)} · {self.launchpads[str(item['id'])].model.name} · 8×8"}
+                for item in self._layout_configs() if str(item["id"]) in self.launchpads and self.launchpads[str(item["id"])].connected]
+
+    def _vj_led_size(self,cfg=None):
+        cfg=cfg or self.settings_store.data["vj"]
+        connected=[item for item in self._layout_configs() if str(item["id"]) in self.launchpads and self.launchpads[str(item["id"])].connected]
+        link=self.multi_cfg.get("link_mode",LINK_EXTEND) if self.multi_cfg.get("enabled") else LINK_MIRROR
+        return vj_led_layout(connected,cfg["launchpads"],link)[0]
+
     def _vj_apply_form(self):
         try:
             cfg=dict(self.settings_store.data["vj"])
             cfg.update({key:var.get() for key,var in self.vj_vars.items()})
             cfg["screens"]=[key for key,var in self.vj_screen_vars.items() if var.get()]
+            cfg["launchpads"]=[key for key,var in self.vj_pad_vars.items() if var.get()]
             self._vj_save_config(validate_vj_config(cfg))
         except (ValueError,tk.TclError) as exc:self.set_status(f"VJ 设置：{exc}")
 
-    def _vj_runtime_config(self):
-        cfg=validate_vj_config(self.settings_store.data["vj"])
+    def _vj_runtime_config(self,raw=None):
+        cfg=validate_vj_config(raw or self.settings_store.data["vj"])
         self.vj_devices=audio_devices(); self.vj_screens=display_targets()
         device=next((device_id for device_id,name in self.vj_devices if name==cfg["device"]),None)
         if device is None:raise ValueError("所选音频输入已不可用，请刷新并重新选择")
         available={screen["id"] for screen in self.vj_screens}
         if any(key not in available for key in cfg["screens"]):raise ValueError("投屏显示器已断开，请重新选择目标")
-        cfg.update(device=device,output_size=self._output_size("实时 VJ"),log_path=str(LOG_DIR/"vj.log"),custom_color=self.custom_color)
+        if cfg["map_launchpad"] and not set(cfg["launchpads"]).intersection(p["id"] for p in self._vj_pad_options()):raise ValueError("所选 Launchpad 未连接，请连接设备或修改灯板目标")
+        cfg.update(device=device,output_size=self._vj_led_size(cfg),log_path=str(LOG_DIR/"vj.log"),custom_color=self.custom_color)
         return cfg
 
     def _vj_save_config(self,cfg):
-        previous_map=self.settings_store.data["vj"]["map_launchpad"]
+        previous=self.settings_store.data["vj"]
+        runtime=self._vj_runtime_config(cfg) if self.vj.state.get("running") else None
         self.settings_store.data["vj"]=cfg; self.settings_store.save()
         if self.vj.state.get("running"):
-            if cfg["map_launchpad"] and not previous_map:
-                self._start_vj(from_form=False)
+            self.vj.update(runtime)
+            if cfg["map_launchpad"]:self.active_modes.add("实时 VJ"); self.active_mode="实时 VJ"
             else:
-                self.vj.update(self._vj_runtime_config())
-                if previous_map and not cfg["map_launchpad"]:
-                    self.apply_frame(blank(self._output_size("实时 VJ")),"实时 VJ")
-                    self.active_modes.discard("实时 VJ"); self.mode_frames.pop("实时 VJ",None)
-                    if self.active_mode=="实时 VJ":self.active_mode=next(iter(self.active_modes),None)
+                self.active_modes.discard("实时 VJ"); self.mode_frames.pop("实时 VJ",None)
+                if self.active_mode=="实时 VJ":self.active_mode=next(iter(self.active_modes),None)
+            released=set(previous["launchpads"])-(set(cfg["launchpads"]) if cfg["map_launchpad"] else set())
+            if previous["map_launchpad"]:self._vj_release_targets(released)
         self.set_status("VJ 参数已保存"+("，实时生效" if self.vj.state.get("running") else ""))
 
     def _start_vj(self,from_form=True):
@@ -1448,10 +1476,12 @@ class LaunchpadStudio(tk.Tk):
             if from_form and self.mode=="实时 VJ":
                 cfg=dict(self.settings_store.data["vj"]); cfg.update({key:var.get() for key,var in self.vj_vars.items()})
                 cfg["screens"]=[key for key,var in self.vj_screen_vars.items() if var.get()]
+                cfg["launchpads"]=[key for key,var in self.vj_pad_vars.items() if var.get()]
                 self.settings_store.data["vj"]=validate_vj_config(cfg); self.settings_store.save()
             config=self._vj_runtime_config()
-            if config["map_launchpad"]:self._activate_mode("实时 VJ")
-            self.vj.start(config); self.set_status("VJ 正在启动独立 GPU 输出窗口")
+            self.vj.start(config)
+            if config["map_launchpad"]:self.active_modes.add("实时 VJ"); self.active_mode="实时 VJ"
+            self.set_status("VJ 正在启动分离式屏幕 / 灯板输出")
         except Exception as exc:
             self.set_status(f"VJ 启动失败：{exc}")
             if from_form:messagebox.showerror("VJ 启动失败",str(exc),parent=self)
@@ -1461,17 +1491,20 @@ class LaunchpadStudio(tk.Tk):
         if self._closing:return
         for message in self.vj.poll():
             if "pixels" in message and "实时 VJ" in self.active_modes:
-                self.apply_frame(led_frame(message["pixels"],self.brightness.get()/100),"实时 VJ")
+                width,height=self._vj_led_size()
+                if message["pixels"].shape[:2]==(height,width):self.apply_frame(led_frame(message["pixels"],self.brightness.get()/100),"实时 VJ")
             if "error" in message:self.set_status(f"VJ：{message['error']}"); logging.error("VJ: %s",message["error"])
         if not self.vj.state.get("running") and "实时 VJ" in self.active_modes:
-            self.apply_frame(blank(self._output_size("实时 VJ")),"实时 VJ")
             self.active_modes.discard("实时 VJ"); self.mode_frames.pop("实时 VJ",None)
             if self.active_mode=="实时 VJ":self.active_mode=next(iter(self.active_modes),None)
+            self._vj_release_targets(self.settings_store.data["vj"]["launchpads"])
         if self.mode=="实时 VJ" and hasattr(self,"vj_info"):
             state=self.vj.state
             text=(f"{state.get('scene','启动中')} · {state.get('fps',0)} FPS\nBPM {state.get('bpm',0):g} · {state.get('style','等待音乐')}\n"
-                  f"情绪估计：{state.get('mood','--')} · 能量 {state.get('energy',0):.0%}\n{state.get('audio_status','等待音频')}") if state.get("running") else "VJ 已停止"
+                  f"灯板：{state.get('led_style','--')} · {state.get('led_fps',0)} FPS\n情绪估计：{state.get('mood','--')} · 能量 {state.get('energy',0):.0%}\n{state.get('audio_status','等待音频')}") if state.get("running") else "VJ 已停止"
             self.vj_info.configure(text=text)
+            size=self._vj_led_size(); count=len(self.settings_store.data["vj"]["launchpads"])
+            self.vj_led_info.configure(text=f"灯板原生画布：{size[0]}×{size[1]} · 已选 {count} 台\n屏幕分辨率独立，不会随灯板数量改变")
         self.after(16,self._vj_poll)
 
     def _remote_vj(self,command,value):
@@ -1909,7 +1942,7 @@ class LaunchpadStudio(tk.Tk):
         if "实时拾音" in self.active_modes and hasattr(self,"live_visual_vars"):self._update_live_visual()
         if "视频播放" in self.active_modes and hasattr(self,"video_vars"):self._update_video_effect()
         if self.vj.state.get("running"):
-            self.vj.update({**self.vj.config,"output_size":self._output_size("实时 VJ"),"custom_color":self.custom_color})
+            self.vj.update({**self.vj.config,"output_size":self._vj_led_size(),"custom_color":self.custom_color})
 
     def _pick_global_color(self):
         value=colorchooser.askcolor(self.custom_color,title="整体主色")[1]
@@ -2029,7 +2062,11 @@ class LaunchpadStudio(tk.Tk):
         configs=[dict(item) for item in self._layout_configs()]
         if self.multi_cfg.get("link_mode",LINK_EXTEND)!=LINK_INDEPENDENT:
             display_mode=self.active_mode or (next(reversed(self.mode_frames)) if self.mode_frames else "待机")
+            if display_mode=="实时 VJ":display_mode=next((key for key in reversed(self.mode_frames) if key!="实时 VJ"),"待机")
             for item in configs:item["mode"]=display_mode
+        if "实时 VJ" in self.active_modes:
+            for item in configs:
+                if str(item["id"]) in self.settings_store.data["vj"]["launchpads"]:item["mode"]="实时 VJ"
         full=bool(self.multi_cfg.get("enabled") and len(configs)>1)
         actual={key:device.colors for key,device in self.launchpads.items()}
         if frames is not None:actual.update(frames)
@@ -2065,7 +2102,12 @@ class LaunchpadStudio(tk.Tk):
         source=source or self.active_mode or self.mode; self.mode_frames[source]=dict(frame)
         configs=self._layout_configs(); pads={key:device.pads for key,device in self.launchpads.items() if device.connected}
         link_mode=self.multi_cfg.get("link_mode",LINK_EXTEND) if self.multi_cfg.get("enabled") else LINK_MIRROR
-        routed=route_frames(configs,pads,self.mode_frames,link_mode,source)
+        selected=self.settings_store.data["vj"]["launchpads"]
+        if source=="实时 VJ":routed=vj_led_routes(frame,configs,pads,selected,link_mode)
+        else:
+            routed=route_frames(configs,pads,{key:value for key,value in self.mode_frames.items() if key!="实时 VJ"},link_mode,source)
+            if "实时 VJ" in self.active_modes:
+                routed={key:value for key,value in routed.items() if key not in selected}
         primary_id=next((key for key,value in self.launchpads.items() if value is self.lp),None)
         if primary_id in routed:
             self.current_frame=routed[primary_id]
@@ -2130,7 +2172,12 @@ class LaunchpadStudio(tk.Tk):
     def _activate_mode(self,name):
         independent=(self.multi_cfg.get("enabled") and self.multi_cfg.get("link_mode")==LINK_INDEPENDENT and len(self._layout_configs())>1)
         if independent:self._stop_mode(name,False,False)
-        else:self._stop_all(False,keep_vj=name!="实时 VJ" and not self.settings_store.data["vj"]["map_launchpad"])
+        else:
+            keep_vj=name!="实时 VJ" and self.vj.state.get("running") and (self.vj.config.get("preview") or self.vj.config.get("screens"))
+            if keep_vj and self.settings_store.data["vj"]["map_launchpad"]:
+                self.settings_store.data["vj"]["map_launchpad"]=False;self.settings_store.save()
+                self.vj.update({**self.vj.config,"map_launchpad":False})
+            self._stop_all(False,keep_vj=keep_vj)
         self.score_effect_token+=1; self.active_mode=name; self.active_modes.add(name)
 
     def _stop_mode(self,name,clear=False,set_status=True):
@@ -2143,8 +2190,20 @@ class LaunchpadStudio(tk.Tk):
         self.active_modes.discard(name); self.mode_frames.pop(name,None)
         if self.active_mode==name:self.active_mode=next(iter(self.active_modes),None)
         if clear:
-            blank={xy:(0,0,0) for xy in ALL_PADS}; self.mode_frames[name]=blank; self.apply_frame(blank,name); self.mode_frames.pop(name,None)
+            if name=="实时 VJ":self._vj_release_targets(self.settings_store.data["vj"]["launchpads"])
+            else:
+                blank={xy:(0,0,0) for xy in ALL_PADS}; self.mode_frames[name]=blank; self.apply_frame(blank,name); self.mode_frames.pop(name,None)
         if set_status:self.set_status(f"{name}已停止")
+
+    def _vj_release_targets(self,device_ids):
+        for device_id in device_ids:
+            device=self.launchpads.get(device_id)
+            if device and device.connected:device.clear(force=True)
+        base={key:frame for key,frame in self.mode_frames.items() if key!="实时 VJ"}
+        if base:
+            source=self.active_mode if self.active_mode in base else next(reversed(base))
+            self.apply_frame(base[source],source)
+        else:self._sync_canvas_preview()
 
     def _stop_all(self,set_status=True,keep_vj=False):
         self.running_perf=False; self.video.stop()

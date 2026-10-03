@@ -41,7 +41,8 @@ DEFAULT = {
     "macro_control_enabled": False,
     "live_device": "",
     "vj": {"device":"", "style":"自动编排", "palette":"自动配色", "aspect":"16:9", "width":1920, "height":1080,
-           "fps":30, "alpha":False, "preview":True, "screens":[], "map_launchpad":False,
+           "fps":30, "alpha":False, "preview":True, "screens":[], "map_launchpad":False, "launchpads":[],
+           "led_style":"自动联动", "led_speed":1.0, "led_intensity":1.0, "led_density":1.0, "led_contrast":2.0, "led_threshold":.25,
            "sensitivity":1.0, "threshold":.008, "speed":1.0, "intensity":1.0, "detail":1.0, "scene_seconds":16},
     "remote": {"enabled": True, "port": 8765, "pin": ""},
 }
@@ -69,6 +70,8 @@ class Settings:
             self.data["remote"] = {**DEFAULT["remote"], **self.data.get("remote", {})}
             self.data["multi_launchpad"] = {**DEFAULT["multi_launchpad"], **self.data.get("multi_launchpad", {})}
             self.data["vj"] = {**DEFAULT["vj"], **self.data.get("vj", {})}
+            if "launchpads" not in loaded.get("vj",{}) and self.data["vj"]["map_launchpad"]:
+                self.data["vj"]["launchpads"]=[str(item["id"]) for item in self.data["multi_launchpad"]["devices"]] or ["lp1"]
         except FileNotFoundError:
             pass
         except json.JSONDecodeError:

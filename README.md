@@ -20,6 +20,18 @@ The overview covers performance, macros, video, music, live audio, clock/calenda
 
 ## 中文介绍
 
+### 2.3 · Pulse Canvas：屏幕与灯板分离
+
+屏幕继续使用 8 种 GPU 场景，Launchpad 默认使用独立的原生像素渲染，不再把高清视频直接缩小。新增 12 种黑底高对比光效：像素/镜像频谱、节拍方环、弹跳光柱、像素雨幕、扫描激光、旋转射线、棋盘冲击、像素螺旋、节拍箭头、粒子爆发、音浪线条；也可选“原画采样”保留同画面映射。
+
+屏幕和灯板都可多选，灯板速度、强度、密度、对比度和亮度截断独立调节，共用音乐节拍、情绪估计与色彩主题。灯板分辨率按所选设备的实际布局自动计算：一块 8×8，两块横排 16×8、竖排 8×16；复制模式每块都是 8×8，布局间隙保留。**屏幕的宽高和画幅不随灯板数量改变。**
+
+未选灯板继续原模式；可以仅投屏、仅灯板或同时输出。在统一布局中启动另一灯板模式只接替 LED，已打开的 VJ 投屏继续运行；“全部停止并熄灯”才统一关闭所有输出。手机端具备相同多选和参数控制。
+
+[观看 12 种灯板光效与独立投屏的完整演示](docs/media/vj-led-demo.mp4) · [VJ 使用说明](docs/VJ.md)
+
+![12 种原生灯板光效，使用模拟音乐特征而非实机录像](docs/media/vj-led-styles.png)
+
 ### 2.2 · 实时 VJ 背景
 
 新增 **实时 VJ** 页面：采集系统回放或麦克风，实时估计 BPM、瞬态、频谱、能量、风格和情绪，用 GPU 生成舞台背景。内置霓虹隧道、激光矩阵、星际粒子、分形星云、几何万花筒、液态铬金、合成波日落、暗黑科技 8 种原创风格，支持音乐特征驱动的自动换景、柔和过渡及自动/手动配色。
@@ -28,7 +40,7 @@ The overview covers performance, macros, video, music, live audio, clock/calenda
 2. 选择画幅（16:9、21:9、32:9、4:3、1:1、9:16 或自定义）、分辨率和 24/25/30/50/60 FPS；支持常用宽度下拉及任意宽高输入，保持比例投放，不拉伸。实际帧率取决于 GPU、分辨率和窗口数量，界面显示实测 FPS。
 3. 投屏显示器可多选，每个目标有独立全屏窗口，可同时开启小窗口预览。双击画面或 F11 切换全屏，Esc 关闭当前窗口；关闭最后一个窗口会停止 VJ。
 4. Alpha 选项提供真正的 RGBA 透明窗口，可叠加桌面或其他窗口；**普通 HDMI 信号不保留 Alpha**，外部透明合成需支持透明窗口采集/混合的工具。本版不提供 Spout、NDI 或透明视频文件导出。
-5. 开启灯板映射后，对实际 GPU 图像下采样生成 Launchpad 灯光，适配扩展、复制和独立布局；关闭映射时 VJ 可与已有灯板功能同时运行。只浏览其他页面不会停止演示，“全部停止并熄灯”同时关闭投屏和 LED。
+5. 开启灯板输出后，2.3 默认生成原生像素灯效；选择“原画采样”时才对 GPU 图像下采样。可与未选灯板的原模式并行运行，只浏览其他页面不会停止演示，“全部停止并熄灯”同时关闭投屏和 LED。
 
 灵敏度、静音阈值、运动速度、强度、密度和换景间隔均可调并自动保存；手机网页和 Android 客户端具有对应控制。
 
@@ -192,6 +204,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1
 
 ## English
 
+### 2.3 · Pulse Canvas: independent screen and pad rendering
+
+Eight GPU screen scenes now pair with twelve native, high-contrast LED styles: spectrum, mirrored spectrum, beat squares, bouncing columns, pixel rain, scanning lasers, rotating rays, checkerboard hits, pixel spirals, beat arrows, particle bursts and waveform lines. Screen and pad style/speed/intensity/detail are separate; the palette, beat envelope and estimated mood remain shared. Original-image sampling remains optional.
+
+Select any connected Launchpads and monitors. LED resolution follows the selected layout: 8×8 for one pad, 16×8 for two horizontally arranged pads, 8×16 vertically, or 8×8 per mirrored pad. Layout gaps are preserved; **screen resolution never changes with pad selection**. Unselected pads keep their previous mode, LED-only output is available, and starting another LED mode in unified layouts preserves the VJ projection. Android exposes the same controls.
+
+[Twelve-style LED and independent-screen demo](docs/media/vj-led-demo.mp4) · [Setup and verified scope](docs/VJ.md). Demo media uses labeled simulated music, not physical Launchpad footage.
+
 ### 2.2 · Real-time VJ backgrounds
 
 The new **实时 VJ** page captures WASAPI system playback or microphone audio and drives eight original GPU styles: neon tunnel, laser grid, starfield, fractal nebula, geometric kaleidoscope, liquid chrome, synthwave sunset, and dark techno. Streaming beats, spectrum and energy control motion and brightness; automatic sequencing and palette selection use explicitly heuristic style/mood estimates, not an accurate genre classifier or generative-AI video model. Tempo needs approximately 3–12 seconds to settle.
@@ -199,7 +219,7 @@ The new **实时 VJ** page captures WASAPI system playback or microphone audio a
 - Choose one or several connected monitors for separate fullscreen outputs, optionally alongside a small preview window. Double-click or F11 toggles fullscreen, Esc closes that output, and closing the last output stops VJ.
 - Choose 16:9, 21:9, 32:9, 4:3, square, portrait or custom aspect; set output width/height and 24/25/30/50/60 FPS. Presentation preserves aspect. Actual FPS is displayed and depends on GPU load, resolution and window count; OpenGL 3.3 is required.
 - Alpha enables genuine premultiplied RGBA and transparent desktop windows. **Normal HDMI does not transport alpha**. External compositing needs a tool supporting transparent window capture; this version does not provide Spout, NDI or alpha-video export.
-- Map the actual GPU image to Launchpad LEDs, including extended, mirrored and independently assigned boards. With mapping disabled, VJ can run alongside other LED modes. Merely browsing pages never interrupts the show; Stop All / Blackout stops VJ outputs and LEDs together.
+- Use independent native LED rendering, or choose Original Image Sampling to map the GPU picture. Selected pads can run alongside other modes on unselected pads. Merely browsing pages never interrupts the show; Stop All / Blackout stops VJ outputs and LEDs together.
 - Sensitivity, silence gate, motion speed, intensity, density and scene interval are adjustable and remembered. Android and mobile web expose the same VJ controls, including monitor multi-selection.
 
 [Watch all eight styles](docs/media/vj-demo.mp4) · [GIF](docs/media/vj-demo.gif) · [Setup and verification details](docs/VJ.md)

@@ -139,13 +139,15 @@ class RemoteServer:
     async def _index(self, request):
         from aiohttp import web
 
-        return web.FileResponse(self.web_root / "index.html")
+        # These small UI assets do not need Windows' native sendfile path, which
+        # can time out on LAN sockets while ordinary JSON responses keep working.
+        return web.Response(body=(self.web_root / "index.html").read_bytes(),content_type="text/html",charset="utf-8")
 
     async def _asset(self, request):
         from aiohttp import web
 
         name = request.path.rsplit("/", 1)[-1]
-        return web.FileResponse(self.web_root / name)
+        return web.Response(body=(self.web_root / name).read_bytes(),content_type={"app.js":"application/javascript","style.css":"text/css"}[name],charset="utf-8")
 
     async def _info(self, request):
         from aiohttp import web

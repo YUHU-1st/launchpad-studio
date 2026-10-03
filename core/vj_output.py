@@ -9,8 +9,7 @@ import time
 import numpy as np
 
 from .audio_engine import LiveAudio
-from .performance import PALETTES
-from .vj_engine import RealtimeMusicFeatures, VJ_STYLES
+from .vj_engine import RealtimeMusicFeatures, VJ_STYLES, native_led_pixels, vj_colors
 from .vj_shaders import FRAGMENT, MAP, PRESENT, VERTEX
 
 
@@ -88,19 +87,14 @@ def run_vj(config,commands,events,stop_event):
                       "treble":features["treble"],"beat":features["beat"],"speed":cfg["speed"],"intensity":cfg["intensity"],
                       "detail":cfg["detail"],"scene":self.session.scene,"previous":self.session.previous,
                       "transition":min(1.,(now-self.session.changed_at)/1.5),"alpha":int(cfg["alpha"])}
-            palette=cfg["palette"]
-            if palette=="自动配色":
-                palette="海洋" if features["mood"]=="沉静" else "日落" if features["mood"] in ("激昂","热烈") else "霓虹"
-            low,high=PALETTES.get(palette,PALETTES["霓虹"])
-            if palette=="自定义":
-                h=cfg.get("custom_color","#7c5cff").lstrip("#"); high=tuple(int(h[i:i+2],16) for i in (0,2,4)); low=tuple(v*.18 for v in high)
+            low,high=vj_colors(cfg,features)
             uniforms.update(lowColor=tuple(v/255 for v in low),highColor=tuple(v/255 for v in high))
             for key,value in uniforms.items():self.program[key].value=value
             self.program["bands"].write(np.asarray(features["bands"],dtype="f4").tobytes())
             self.vao.render(vertices=3)
             self.frames+=1
             # Downsample the real GPU image, not a separately generated LED effect.
-            if cfg["map_launchpad"] and now-self.last_map>=.05 and self is self.session.primary_canvas():
+            if cfg["map_launchpad"] and cfg["led_style"]=="原画采样" and now-self.last_map>=.05 and self is self.session.primary_canvas():
                 map_size=tuple(cfg["output_size"])
                 if map_size!=self.map_size:
                     if self.map_buffer:self.map_buffer.release(); self.map_texture.release()
@@ -108,7 +102,7 @@ def run_vj(config,commands,events,stop_event):
                 self.map_buffer.use(); self.texture.use(0); self.mapper["image"].value=0
                 self.mapper["cellSize"].value=(1/map_size[0],1/map_size[1]); self.map_vao.render(vertices=3)
                 rgb=np.frombuffer(self.map_buffer.read(components=3,alignment=1),dtype=np.uint8).reshape(map_size[1],map_size[0],3)[::-1].copy()
-                emit({"pixels":rgb}); self.last_map=now
+                emit({"pixels":rgb}); self.last_map=now; self.session.led_frames+=1
             if not present:return
             screen=self.ctx.detect_framebuffer(self.defaultFramebufferObject()); screen.use()
             screen.clear(0,0,0,0 if cfg["alpha"] else 1)
@@ -160,6 +154,7 @@ def run_vj(config,commands,events,stop_event):
             self.windows={}; self.failed=False; self.rebuilding=False; self.scene=0; self.previous=0
             self.now=time.monotonic(); self.start_time=self.now; self.changed_at=self.now-2; self.next_scene=self.now+self.cfg["scene_seconds"]
             self.motion=0.; self.last_frame=self.now; self.next_frame=self.now; self.last_state=self.now; self.fps=0.
+            self.last_led=0.; self.led_frames=0; self.led_style="停止"
             self.capture=LiveAudio(None,self.audio_status,self.audio_samples)
             self.audio_message="等待音频"; self.rebuild()
             self.capture.start(self.cfg["device"],"频谱","霓虹",1)
@@ -188,7 +183,6 @@ def run_vj(config,commands,events,stop_event):
             if self.cfg["preview"]:self.windows["preview"]=OutputWindow(self,"preview")
             for key in self.cfg["screens"]:
                 if key in screens:self.windows[key]=OutputWindow(self,key,screens[key])
-            if not self.windows:self.windows["preview"]=OutputWindow(self,"preview")
             self.rebuilding=False
 
         def primary_canvas(self):
@@ -208,9 +202,12 @@ def run_vj(config,commands,events,stop_event):
                     except Exception as exc:self.fail(str(exc)); return
                 if any(old[key]!=self.cfg[key] for key in ("alpha","preview","screens")):self.rebuild()
             self.now=time.monotonic()
+            self.features=self.analyser.snapshot()
+            if self.cfg["map_launchpad"] and self.cfg["led_style"]!="原画采样" and self.now-self.last_led>=.05:
+                pixels,self.led_style=native_led_pixels(self.cfg,self.features,self.motion,self.scene)
+                emit({"pixels":pixels}); self.last_led=self.now; self.led_frames+=1
             if self.now<self.next_frame:return
             self.next_frame=max(self.next_frame+1/self.cfg["fps"],self.now)
-            self.features=self.analyser.snapshot()
             self.motion+=(self.now-self.last_frame)*(.7+self.features["energy"]*.3+min(1.,self.features["bpm"]/240))
             self.last_frame=self.now
             if self.cfg["style"]=="自动编排":
@@ -225,7 +222,7 @@ def run_vj(config,commands,events,stop_event):
                 if selected!=self.scene:self.previous=self.scene; self.scene=selected; self.changed_at=self.now
             for window in list(self.windows.values()):
                 canvas=window.canvas
-                if window.isMinimized() and self.cfg["map_launchpad"] and canvas is self.primary_canvas() and canvas.ctx:
+                if window.isMinimized() and self.cfg["map_launchpad"] and self.cfg["led_style"]=="原画采样" and canvas is self.primary_canvas() and canvas.ctx:
                     try:
                         canvas.makeCurrent(); canvas.render(present=False); canvas.doneCurrent()
                     except Exception as exc:self.fail(f"后台 VJ 渲染失败：{exc}")
@@ -235,9 +232,12 @@ def run_vj(config,commands,events,stop_event):
                 self.fps=rendered/max(.001,self.now-self.last_state)/max(1,len(self.windows))
                 for window in self.windows.values():window.canvas.frames=0
                 state={"running":True,"starting":False,"fps":round(self.fps,1),"scene":VJ_STYLES[self.scene+1],
+                       "led_style":self.led_style if self.cfg["led_style"]!="原画采样" else "原画采样",
+                       "led_width":self.cfg["output_size"][0],"led_height":self.cfg["output_size"][1],
+                       "led_fps":round(self.led_frames/max(.001,self.now-self.last_state),1),
                        "windows":list(self.windows),"audio_status":self.audio_message,"width":self.cfg["width"],"height":self.cfg["height"],
                        **{key:value for key,value in self.features.items() if key!="bands"}}
-                emit({"state":state}); self.last_state=self.now
+                emit({"state":state}); self.last_state=self.now; self.led_frames=0
 
     session=None
     try:

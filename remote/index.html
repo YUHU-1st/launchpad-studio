@@ -77,6 +77,21 @@
         <div id="live-presets" class="preset-row"></div>
       </div>
       <div class="card">
+        <div class="card-title"><h3>实时 VJ · 大屏背景</h3><span id="vj-state" class="chip">停止</span></div>
+        <p id="vj-analysis" class="muted">节拍、风格、情绪根据实时音频特征估计。</p>
+        <label>系统声音 / 麦克风<select id="vj-device"></select></label>
+        <div class="grid2"><label>画面风格<select id="vj-style"></select></label><label>配色<select id="vj-palette"></select></label><label>画幅<select id="vj-aspect"></select></label><label>帧率<select id="vj-fps"></select></label></div>
+        <div class="grid2"><label>输出宽度<input id="vj-width" type="number" min="128" max="7680"></label><label>输出高度<input id="vj-height" type="number" min="128" max="4320"></label></div>
+        <p class="muted">投屏目标（可多选）</p><div id="vj-screens"></div>
+        <label class="switch-row"><input id="vj-preview" type="checkbox"><span>电脑独立小窗口预览</span></label>
+        <label class="switch-row"><input id="vj-alpha" type="checkbox"><span>Alpha 透明背景</span></label>
+        <label class="switch-row"><input id="vj-map_launchpad" type="checkbox"><span>VJ 画面同步映射到 Launchpad</span></label>
+        <details><summary>音频与画面参数</summary><div id="vj-params" class="param-list"></div></details>
+        <p class="muted">透明窗口可叠加在桌面上；普通 HDMI 投屏不会传送透明通道。F11 切换全屏，Esc 关闭输出窗口。</p>
+        <div class="button-row"><button id="vj-apply">应用输出设置</button><button id="vj-refresh">刷新设备</button></div>
+        <div class="button-row"><button id="vj-start" class="primary">开始 / 重启 VJ</button><button id="vj-stop">停止 VJ</button></div>
+      </div>
+      <div class="card">
         <div class="card-title"><h3>桌面工具</h3><span id="utility-state" class="chip">停止</span></div>
         <label>功能<select id="utility-choice"></select></label>
         <div id="weather-options"><label>天气城市<input id="weather-city" type="text" placeholder="杭州"></label></div>

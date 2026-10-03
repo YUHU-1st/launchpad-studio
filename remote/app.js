@@ -7,6 +7,7 @@ const macroActions = ["热键","输入文字","打开文件/程序","打开网�
 let token = new URLSearchParams(location.search).get("token") || localStorage.getItem("launchpadPin") || "";
 let ws = null, state = null, reconnectTimer = null, selectedMacro = null, lyricsKey = "";
 let deviceDraft = [], deviceDraftDirty = false, deviceStateSignature = "", devicePendingUntil = 0, deviceTileDrag = null, layoutLinkMode = "扩展画布";
+let vjOutputDirty=false,vjPendingUntil=0;
 const dragging = new Set();
 
 function options(el, values, selected, labelKey=null, valueKey=null) {
@@ -41,6 +42,7 @@ function connect() {
   ws.onopen = () => {
     $("connection").textContent = "已连接"; $("connection").className = "status online";
     $("pair").classList.add("hidden"); localStorage.setItem("launchpadPin", token);
+    command("vj.refresh");
   };
   ws.onmessage = (event) => {
     const message = JSON.parse(event.data);
@@ -104,7 +106,38 @@ function renderStudio() {
   if(document.activeElement!==$("custom-color"))$("custom-color").value=g.custom_color||"#7c5cff"; $("macro-control").checked=!!g.macro_control;
   const metrics=["CPU","RAM","GPU","磁盘","网络 MB/s","磁盘 MB/s"];
   $("perf-grid").innerHTML=metrics.map(k=>`<div class="metric"><small>${k}</small><strong>${perf[k]==null?"--":Number(perf[k]).toFixed(1)+(k.includes("MB/s")?"":"%")}</strong></div>`).join("");
-  renderVideo(); renderMusic(); renderLive(); renderUtility();
+  renderVideo(); renderMusic(); renderLive(); renderUtility(); renderVJ();
+}
+
+function renderVJ() {
+  const v=state.vj;if(!v)return;const cfg=v.config||{},s=v.state||{};
+  options($("vj-device"),v.devices||[],cfg.device,"name","name");
+  options($("vj-style"),v.styles||[],cfg.style);options($("vj-palette"),["自动配色",...(state.global?.palettes||[])],cfg.palette);
+  options($("vj-aspect"),v.aspects||[],cfg.aspect);options($("vj-fps"),v.fps_options||[],cfg.fps);
+  if(!vjOutputDirty&&Date.now()>=vjPendingUntil){
+    for(const key of ["width","height"]){const el=$(`vj-${key}`);if(document.activeElement!==el)el.value=cfg[key];}
+    for(const key of ["preview","alpha","map_launchpad"])$(`vj-${key}`).checked=!!cfg[key];
+  }
+  const host=$("vj-screens"),signature=JSON.stringify(v.screens||[]);
+  if(host.dataset.signature!==signature){
+    host.replaceChildren();(v.screens||[]).forEach(screen=>{
+      const label=document.createElement("label");label.className="switch-row";
+      const input=document.createElement("input");input.type="checkbox";input.dataset.screen=screen.id;input.onchange=()=>{vjOutputDirty=true;};
+      const span=document.createElement("span");span.textContent=screen.label;label.append(input,span);host.appendChild(label);
+    });host.dataset.signature=signature;
+  }
+  if(!vjOutputDirty&&Date.now()>=vjPendingUntil)host.querySelectorAll("input").forEach(el=>{if(document.activeElement!==el)el.checked=(cfg.screens||[]).includes(el.dataset.screen);});
+  $("vj-state").textContent=s.running?`${s.fps||0} FPS · ${s.scene||"启动中"}`:"停止";
+  $("vj-analysis").textContent=s.running?`BPM ${s.bpm||"--"} · ${s.style||"等待音乐"} · 情绪估计：${s.mood||"--"} · 能量 ${Math.round((s.energy||0)*100)}% · ${s.audio_status||""}`:"节拍、风格、情绪根据实时音频特征估计。";
+  const specs=[["sensitivity","灵敏度",.1,4,.1],["threshold","静音阈值",0,.2,.001],["speed","运动速度",.1,3,.1],["intensity","光效强度",.1,2,.1],["detail","图形密度",.3,2,.1],["scene_seconds","自动换景秒数",4,120,1]];
+  const params=$("vj-params");
+  if(!params.dataset.ready){specs.forEach(([key,label,min,max,step])=>{
+    const row=document.createElement("label");row.textContent=label;const val=document.createElement("b");
+    const input=document.createElement("input");input.type="range";input.min=min;input.max=max;input.step=step;input.dataset.key=key;
+    input.oninput=()=>{val.textContent=input.value;};input.onchange=()=>command("vj.config",{[key]:Number(input.value)});
+    row.append(val,input);params.appendChild(row);
+  });params.dataset.ready="1";}
+  params.querySelectorAll("input").forEach(input=>{if(document.activeElement!==input)input.value=cfg[input.dataset.key];input.previousElementSibling.textContent=input.value;});
 }
 
 function renderVideo() {
@@ -298,6 +331,18 @@ document.querySelectorAll("[data-music]").forEach(button=>button.onclick=()=>com
 $("music-style").onchange=event=>command("music.style",event.target.value); $("music-rate").onchange=event=>command("music.rate",event.target.value); $("music-loop").onchange=event=>command("music.loop",event.target.value); bindRange("music-volume","music.volume",Number,80);
 
 $("live-device").onchange=event=>{const item=state?.live?.devices?.[Number(event.target.value)];if(item)command("live.device",item.id);}; $("live-style").onchange=event=>command("live.style",event.target.value); $("live-start").onclick=()=>command("live.start");
+for(const key of ["device","style","palette","fps"])$(`vj-${key}`).onchange=event=>command("vj.config",{[key]:key==="fps"?Number(event.target.value):event.target.value});
+$("vj-aspect").onchange=event=>{
+  const aspect=event.target.value,width=Number($("vj-width").value),height=aspect==="自定义"?Number($("vj-height").value):Math.round(width*Number(aspect.split(":")[1])/Number(aspect.split(":")[0]));
+  $("vj-height").value=height;command("vj.config",{aspect,width,height});
+};
+for(const key of ["width","height","preview","alpha","map_launchpad"])$(`vj-${key}`).onchange=()=>{vjOutputDirty=true;};
+$("vj-apply").onclick=()=>{command("vj.config",{
+  width:Number($("vj-width").value),height:Number($("vj-height").value),aspect:$("vj-aspect").value,
+  screens:Array.from($("vj-screens").querySelectorAll("input:checked"),el=>el.dataset.screen),
+  preview:$("vj-preview").checked,alpha:$("vj-alpha").checked,map_launchpad:$("vj-map_launchpad").checked
+});vjOutputDirty=false;vjPendingUntil=Date.now()+750;};
+$("vj-refresh").onclick=()=>command("vj.refresh");$("vj-start").onclick=()=>command("vj.start");$("vj-stop").onclick=()=>command("vj.stop");
 $("utility-choice").onchange=event=>command("utility.select",event.target.value); $("utility-start").onclick=()=>command("utility.start"); $("utility-pause").onclick=()=>command("utility.focus_pause"); $("utility-reset").onclick=()=>command("utility.focus_reset");
 $("weather-city").onchange=event=>command("utility.weather_city",event.target.value); $("focus-minutes").onchange=event=>command("utility.focus_minutes",Number(event.target.value));
 

@@ -7,6 +7,8 @@ sounddevice>=0.5
 soundfile>=0.12
 PyAudioWPatch>=0.2.12
 screeninfo>=0.8
+PySide6-Essentials==6.11.2
+moderngl>=5.12,<6
 aiohttp>=3.10
 pycaw>=20240210
 comtypes>=1.4

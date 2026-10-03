@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.0 - 2026-10-03 — Stage VJ
+
+- Added real-time GPU VJ backgrounds driven by system playback or microphone audio, with streaming beats, energy, spectral bands and explicitly heuristic style/mood estimates.
+- Added eight original procedural styles, automatic scene transitions and palette selection, and adjustable sensitivity, silence gate, speed, intensity, detail and scene interval.
+- Added independent fullscreen outputs on multiple selected monitors, optional windowed preview, custom aspect/resolution/FPS, premultiplied RGBA transparency and F11/Esc controls.
+- Added mapping of the actual rendered VJ image to native extended/mirrored/independent Launchpad canvases, including background mapping while the preview is minimized.
+- Added all corresponding Android/LAN controls and preserved edited output settings during live state refresh.
+- Fixed single-device LED state omission in the mobile preview and darkened numeric parameter boxes.
+- Kept Windows media initialization out of the GPU process and removed a wrongly collected Poppler ICU library that prevented packaged Qt from loading its Windows dependencies.
+- Added bilingual setup/limitations, original style preview media, unit tests and GPU/desktop/LAN/RC Plus integration tools.
+
 ## 2.1.1 - 2026-09-25
 
 - Made desktop utilities, Snake, Whack-a-Mole, Waterfall Rhythm and radial rhythm render natively across the complete multi-Launchpad canvas instead of stretching an 8×8 image.

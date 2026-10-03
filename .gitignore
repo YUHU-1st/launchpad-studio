@@ -4,6 +4,7 @@ __pycache__/
 *.pdb
 *.log
 data/settings.json
+data/vj-smoke-result.txt
 build/
 dist/
 release/

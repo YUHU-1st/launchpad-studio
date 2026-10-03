@@ -8,7 +8,7 @@ LINK_MIRROR = "复制画面"
 LINK_INDEPENDENT = "独立模式"
 LINK_MODES = (LINK_EXTEND, LINK_MIRROR, LINK_INDEPENDENT)
 
-MODE_SOURCES = ("性能监控", "宏按键", "视频播放", "音乐演示", "实时拾音", "工具与游戏")
+MODE_SOURCES = ("性能监控", "宏按键", "视频播放", "音乐演示", "实时拾音", "实时 VJ", "工具与游戏")
 
 
 _DIGITS = {

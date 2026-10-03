@@ -337,8 +337,9 @@ class MusicShow:
 
 
 class LiveAudio:
-    def __init__(self, on_frame, on_status=None):
+    def __init__(self, on_frame, on_status=None, on_samples=None):
         self.on_frame = on_frame
+        self.on_samples = on_samples
         self.on_status = on_status or (lambda _s: None)
         self.stop_event = threading.Event()
         self.stream = None
@@ -396,7 +397,8 @@ class LiveAudio:
                 raw = self.stream.read(1024, exception_on_overflow=False)
                 samples = np.frombuffer(raw, dtype=np.float32).reshape(-1, channels).mean(axis=1)
                 v=self.visual
-                self.on_frame(reactive_frame(samples, sr, v["style"], v["palette"], v["brightness"], tick, v["params"], v.get("output_size",(8,8))))
+                if self.on_samples:self.on_samples(samples,sr)
+                if self.on_frame:self.on_frame(reactive_frame(samples, sr, v["style"], v["palette"], v["brightness"], tick, v["params"], v.get("output_size",(8,8))))
                 tick += 1
             except Exception as exc:
                 self.on_status(f"系统声音回采错误：{exc}")
@@ -408,7 +410,8 @@ class LiveAudio:
             try: samples = self.q.get(timeout=.2)
             except queue.Empty: continue
             v=self.visual
-            self.on_frame(reactive_frame(samples, sr, v["style"], v["palette"], v["brightness"], tick, v["params"], v.get("output_size",(8,8))))
+            if self.on_samples:self.on_samples(samples,sr)
+            if self.on_frame:self.on_frame(reactive_frame(samples, sr, v["style"], v["palette"], v["brightness"], tick, v["params"], v.get("output_size",(8,8))))
             tick += 1
 
     def set_visual(self, style=None, palette=None, brightness=None, params=None, output_size=None):

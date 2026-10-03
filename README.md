@@ -14,11 +14,29 @@ A Windows desktop control center for the Novation Launchpad family. The Matrix m
   <a href="docs/media/launchpad-studio-demo.mp4">观看全模式高清 MP4 演示 / Watch the all-mode HD MP4 demo</a>
 </p>
 
-演示依次覆盖性能监控、宏按键、视频播放、音乐演示、实时拾音、时钟/日历/天气/专注工具、贪吃蛇、打地鼠、瀑布音游和环形音游。下方另有每项功能的独立视频。
+演示依次覆盖性能监控、宏按键、视频播放、音乐演示、实时拾音、时钟/日历/天气/专注工具、贪吃蛇、打地鼠、瀑布音游和环形音游。下方另有每项功能的独立视频，2.2 新增的实时 VJ 另有 8 种画面风格的独立演示。
 
-The overview covers performance, macros, video, music, live audio, clock/calendar/weather/focus tools, Snake, Whack-a-Mole, Waterfall, and the radial rhythm game. Individual feature videos are linked below.
+The overview covers performance, macros, video, music, live audio, clock/calendar/weather/focus tools, Snake, Whack-a-Mole, Waterfall, and the radial rhythm game. Individual feature videos are linked below, including a separate eight-style demo for the new 2.2 VJ feature.
 
 ## 中文介绍
+
+### 2.2 · 实时 VJ 背景
+
+新增 **实时 VJ** 页面：采集系统回放或麦克风，实时估计 BPM、瞬态、频谱、能量、风格和情绪，用 GPU 生成舞台背景。内置霓虹隧道、激光矩阵、星际粒子、分形星云、几何万花筒、液态铬金、合成波日落、暗黑科技 8 种原创风格，支持音乐特征驱动的自动换景、柔和过渡及自动/手动配色。
+
+1. 选择正在播放音乐的“系统声音”设备，或麦克风；节奏估计约需 3–12 秒，风格和情绪只是启发式估计，不是准确分类或生成式 AI 视频。
+2. 选择画幅（16:9、21:9、32:9、4:3、1:1、9:16 或自定义）、分辨率和 24/25/30/50/60 FPS；支持常用宽度下拉及任意宽高输入，保持比例投放，不拉伸。实际帧率取决于 GPU、分辨率和窗口数量，界面显示实测 FPS。
+3. 投屏显示器可多选，每个目标有独立全屏窗口，可同时开启小窗口预览。双击画面或 F11 切换全屏，Esc 关闭当前窗口；关闭最后一个窗口会停止 VJ。
+4. Alpha 选项提供真正的 RGBA 透明窗口，可叠加桌面或其他窗口；**普通 HDMI 信号不保留 Alpha**，外部透明合成需支持透明窗口采集/混合的工具。本版不提供 Spout、NDI 或透明视频文件导出。
+5. 开启灯板映射后，对实际 GPU 图像下采样生成 Launchpad 灯光，适配扩展、复制和独立布局；关闭映射时 VJ 可与已有灯板功能同时运行。只浏览其他页面不会停止演示，“全部停止并熄灯”同时关闭投屏和 LED。
+
+灵敏度、静音阈值、运动速度、强度、密度和换景间隔均可调并自动保存；手机网页和 Android 客户端具有对应控制。
+
+[观看 8 种 VJ 风格演示](docs/media/vj-demo.mp4) · [GIF 预览](docs/media/vj-demo.gif) · [操作说明及验证范围](docs/VJ.md)
+
+![8 种原创 GPU VJ 风格，使用模拟音乐特征](docs/media/vj-styles.png)
+
+视觉语言参考 [Butterchurn](https://github.com/jberg/butterchurn) 和 [Resolume 素材目录](https://resolume.com/footage)，未复制或分发其素材；演示由本项目的实际着色器渲染，使用明确标注的模拟节拍。
 
 ### 下载与启动
 
@@ -173,6 +191,22 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1
 ---
 
 ## English
+
+### 2.2 · Real-time VJ backgrounds
+
+The new **实时 VJ** page captures WASAPI system playback or microphone audio and drives eight original GPU styles: neon tunnel, laser grid, starfield, fractal nebula, geometric kaleidoscope, liquid chrome, synthwave sunset, and dark techno. Streaming beats, spectrum and energy control motion and brightness; automatic sequencing and palette selection use explicitly heuristic style/mood estimates, not an accurate genre classifier or generative-AI video model. Tempo needs approximately 3–12 seconds to settle.
+
+- Choose one or several connected monitors for separate fullscreen outputs, optionally alongside a small preview window. Double-click or F11 toggles fullscreen, Esc closes that output, and closing the last output stops VJ.
+- Choose 16:9, 21:9, 32:9, 4:3, square, portrait or custom aspect; set output width/height and 24/25/30/50/60 FPS. Presentation preserves aspect. Actual FPS is displayed and depends on GPU load, resolution and window count; OpenGL 3.3 is required.
+- Alpha enables genuine premultiplied RGBA and transparent desktop windows. **Normal HDMI does not transport alpha**. External compositing needs a tool supporting transparent window capture; this version does not provide Spout, NDI or alpha-video export.
+- Map the actual GPU image to Launchpad LEDs, including extended, mirrored and independently assigned boards. With mapping disabled, VJ can run alongside other LED modes. Merely browsing pages never interrupts the show; Stop All / Blackout stops VJ outputs and LEDs together.
+- Sensitivity, silence gate, motion speed, intensity, density and scene interval are adjustable and remembered. Android and mobile web expose the same VJ controls, including monitor multi-selection.
+
+[Watch all eight styles](docs/media/vj-demo.mp4) · [GIF](docs/media/vj-demo.gif) · [Setup and verification details](docs/VJ.md)
+
+![Original GPU VJ styles rendered with simulated music features](docs/media/vj-styles.png)
+
+Visual references: [Butterchurn](https://github.com/jberg/butterchurn) and [Resolume footage](https://resolume.com/footage). No third-party footage or presets are copied/distributed. This preview uses the production shaders with explicitly labeled simulated beats.
 
 ### Download and start
 

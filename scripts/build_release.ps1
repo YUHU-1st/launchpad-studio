@@ -27,12 +27,18 @@ try {
     & $pyinstaller --noconfirm --clean --windowed --name LaunchpadStudio `
         --distpath $releaseDist --workpath $releaseWork --specpath $releaseSpec `
         --collect-all pyaudiowpatch --collect-all winrt --collect-all pycaw --collect-all comtypes `
-        --collect-submodules aiohttp --hidden-import=pystray._win32 --hidden-import=sounddevice --hidden-import=soundfile `
+        --collect-submodules aiohttp --hidden-import=pystray._win32 --hidden-import=sounddevice --hidden-import=soundfile --hidden-import=glcontext.wgl `
         --add-data "$repo\VERSION;." --add-data "$repo\tools\TemperatureHelper\publish;tools\TemperatureHelper\publish" `
-        --add-data "$repo\remote;remote" app.py
+        --add-data "$repo\remote;remote" --add-data "$repo\THIRD_PARTY_NOTICES.md;." --add-data "$repo\licenses;licenses" app.py
     if ($LASTEXITCODE -ne 0) { throw "Windows package build failed." }
 
     $desktopDir = Join-Path $releaseDist "LaunchpadStudio"
+    # Qt uses Windows' unversioned ICU API. Never ship the differently versioned
+    # Poppler ICU discovered through the build machine's PATH.
+    foreach ($icuName in @("icuuc.dll","icudt78.dll")) {
+        $icuTarget=Join-Path $desktopDir "_internal\$icuName"
+        if (Test-Path -LiteralPath $icuTarget) { Remove-Item -LiteralPath $icuTarget -Force }
+    }
     $desktopExe = Join-Path $desktopDir "LaunchpadStudio.exe"
     $desktopTest = Start-Process -FilePath $desktopExe -ArgumentList "--self-test" -PassThru -Wait -WindowStyle Hidden
     if ($desktopTest.ExitCode -ne 0) { throw "Packaged desktop self-test failed." }
@@ -60,7 +66,8 @@ try {
         if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Force }
     }
 
-    Compress-Archive -Path (Join-Path $desktopDir "*") -DestinationPath $windowsZip -CompressionLevel Optimal
+    $desktopFiles=Get-ChildItem -LiteralPath $desktopDir | Where-Object Name -ne "data" | Select-Object -ExpandProperty FullName
+    Compress-Archive -LiteralPath $desktopFiles -DestinationPath $windowsZip -CompressionLevel Optimal
     & $zipalign -f -p 4 $unsignedApk $alignedApk
     if ($LASTEXITCODE -ne 0) { throw "Android zip alignment failed." }
     & $apksigner sign --ks $keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out $androidApk $alignedApk

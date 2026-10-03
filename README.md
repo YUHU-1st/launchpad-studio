@@ -1,373 +1,111 @@
-# Launchpad Studio 2 · Matrix
+# Launchpad Studio 2.3 · Pulse Canvas
 
-**中文** | [English](#english)
+把 Novation Launchpad 变成性能仪表、宏键盘、音乐与视频灯板、游戏机，以及与舞台大屏联动的 VJ 控制中心。
 
-面向 Novation Launchpad 全系列的 Windows 桌面控制中心。Matrix 大版本加入多台 Launchpad 的相对布局、扩展画布、复制联动和独立模式；硬件监控、宏按键、音视频像素灯光、实时拾音、桌面工具与可游玩的灯光游戏全部集中在一个无终端窗口、可常驻托盘的软件中。
+Turn your Novation Launchpad into a PC dashboard, macro pad, music/pixel-video visualizer, LED game board, and audio-reactive VJ companion.
 
-A Windows desktop control center for the Novation Launchpad family. The Matrix major release adds relative multi-device layouts, extended canvases, mirrored output, and independent modes alongside hardware telemetry, macro pads, pixel video, music and live-audio lighting, desktop utilities, and playable LED games.
+[![Latest release](https://img.shields.io/github/v/release/YUHU-1st/launchpad-studio)](https://github.com/YUHU-1st/launchpad-studio/releases/latest)
+[![Windows tests](https://github.com/YUHU-1st/launchpad-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/YUHU-1st/launchpad-studio/actions/workflows/ci.yml)
+[![Android build](https://github.com/YUHU-1st/launchpad-studio/actions/workflows/android.yml/badge.svg)](https://github.com/YUHU-1st/launchpad-studio/actions/workflows/android.yml)
 
-<p align="center">
-  <img src="docs/media/launchpad-studio-demo.gif" alt="Launchpad Studio running demo" width="900">
-</p>
+[下载 / Download](https://github.com/YUHU-1st/launchpad-studio/releases/latest) · [中文使用手册](docs/GUIDE_ZH.md) · [English guide](docs/GUIDE_EN.md) · [截图与视频 / Gallery](docs/SHOWCASE.md) · [更新记录 / Changelog](CHANGELOG.md)
 
-<p align="center">
-  <a href="docs/media/launchpad-studio-demo.mp4">观看全模式高清 MP4 演示 / Watch the all-mode HD MP4 demo</a>
-</p>
+[![2.3 桌面界面与两块模拟灯板 / Current desktop with two simulated pads](docs/media/performance-2.3.jpg)](docs/SHOWCASE.md)
 
-演示依次覆盖性能监控、宏按键、视频播放、音乐演示、实时拾音、时钟/日历/天气/专注工具、贪吃蛇、打地鼠、瀑布音游和环形音游。下方另有每项功能的独立视频，2.2 新增的实时 VJ 另有 8 种画面风格的独立演示。
+*新版真实界面，灯板为模拟设备；点击图片进入完整演示库。Current UI with explicitly simulated pads; click for the complete gallery.*
 
-The overview covers performance, macros, video, music, live audio, clock/calendar/weather/focus tools, Snake, Whack-a-Mole, Waterfall, and the radial rhythm game. Individual feature videos are linked below, including a separate eight-style demo for the new 2.2 VJ feature.
+## 它能做什么 / What can it do?
 
-## 中文介绍
+一个 Windows 桌面程序，八个一级页面；单板直接使用，多板可以扩展、复制或运行不同功能，Android / 手机浏览器通过局域网遥控非游戏功能。
 
-### 2.3 · Pulse Canvas：屏幕与灯板分离
+One Windows application, eight main pages. Use one pad or link several in Extended, Mirror, or Independent mode; control non-game features from Android or a mobile browser on your LAN.
 
-屏幕继续使用 8 种 GPU 场景，Launchpad 默认使用独立的原生像素渲染，不再把高清视频直接缩小。新增 12 种黑底高对比光效：像素/镜像频谱、节拍方环、弹跳光柱、像素雨幕、扫描激光、旋转射线、棋盘冲击、像素螺旋、节拍箭头、粒子爆发、音浪线条；也可选“原画采样”保留同画面映射。
+| 功能 / Feature | 可以做什么 / What you get | 预览 / Preview |
+| --- | --- | --- |
+| 性能与温度 / Performance | CPU、内存、GPU、磁盘空间、吞吐量与可用温度传感器 → LED 仪表 / Live metrics and available temperatures | [视频 / Video](docs/media/performance-demo.mp4) |
+| 宏按键 / Macros | 热键、文字、程序、网址、媒体键、鼠标与组合动作；可与非游戏灯效并行 / Pad actions alongside lighting | [视频 / Video](docs/media/macros-demo.mp4) |
+| 视频像素播放器 / Pixel video | 播放列表、拖动进度、变速、循环与六种滤镜 / Playlists, seeking, speed, loops and filters | [视频 / Video](docs/media/video-player-demo.mp4) |
+| 音乐演示 / Music show | 文件播放与分析，十种灯效及频谱、响度、门限参数 / File playback, analysis and adjustable visualizers | [视频 / Video](docs/media/music-show-demo.mp4) |
+| 实时拾音 / Live audio | 麦克风或 Windows 系统回放，无需导入音乐 / Microphone or system loopback with live lighting | [视频 / Video](docs/media/live-audio-demo.mp4) |
+| VJ 投屏 / VJ projection | 八种 GPU 场景、自动换景、多显示器、小窗口及 Alpha / Scenes, sequencing, multi-display, preview and alpha | [视频 / Video](docs/media/vj-demo.mp4) |
+| 原生 VJ 灯板 / Native VJ LEDs | 十二种高对比像素/线条灯效；独立图形、共享节拍和配色 / Independent graphics, shared beat/palette | [视频 / Video](docs/media/vj-led-demo.mp4) |
+| 桌面工具 / Utilities | 时钟、日历、天气、专注计时器 / Clock, calendar, weather and focus | [视频 / Video](docs/media/desktop-utilities-demo.mp4) |
+| 解压游戏 / Casual games | 穿墙贪吃蛇、打地鼠、难度/关卡与得分光效 / Wraparound Snake, Mole, stages and score effects | [贪吃蛇 / Snake](docs/media/snake-demo.mp4) · [打地鼠 / Mole](docs/media/whack-a-mole-demo.mp4) |
+| 自动谱面音游 / Rhythm games | 瀑布与环形音游，音乐生成谱面，难度/速度/键数可调 / Auto-charts with adjustable difficulty/speed/lanes | [瀑布 / Waterfall](docs/media/waterfall-demo.mp4) · [环形 / Radial](docs/media/radial-rhythm-demo.mp4) |
+| 多板布局 / Multi-pad layout | 拖动、编号辨认、原生拼接预览与独立功能路由 / Drag layouts, identify devices, preview native canvas | [图文与视频 / Walkthrough](docs/SHOWCASE.md#layout) |
+| 手机与系统媒体 / Mobile & media | PIN 配对、布局/VJ/预设，媒体会话、歌词、音量和输出切换 / LAN control, lyrics and audio outputs | [图文与视频 / Walkthrough](docs/SHOWCASE.md#remote) |
 
-屏幕和灯板都可多选，灯板速度、强度、密度、对比度和亮度截断独立调节，共用音乐节拍、情绪估计与色彩主题。灯板分辨率按所选设备的实际布局自动计算：一块 8×8，两块横排 16×8、竖排 8×16；复制模式每块都是 8×8，布局间隙保留。**屏幕的宽高和画幅不随灯板数量改变。**
+设置自动记忆；音乐、拾音和视频支持命名预设、最近使用、恢复默认与桌面跨模式复制兼容参数。关闭主窗口收起到托盘，演示继续；顶部“全部停止并熄灯”立即结束所有输出。
 
-未选灯板继续原模式；可以仅投屏、仅灯板或同时输出。在统一布局中启动另一灯板模式只接替 LED，已打开的 VJ 投屏继续运行；“全部停止并熄灯”才统一关闭所有输出。手机端具备相同多选和参数控制。
+Settings persist. Music/live/video have named and recent presets, desktop defaults and compatible-parameter copy/paste. Closing the main window keeps the app in the tray; Stop All / Blackout ends every output.
 
-[观看 12 种灯板光效与独立投屏的完整演示](docs/media/vj-led-demo.mp4) · [VJ 使用说明](docs/VJ.md)
+## 三分钟开始 / Quick start
 
-![12 种原生灯板光效，使用模拟音乐特征而非实机录像](docs/media/vj-led-styles.png)
+1. **下载并解压 / Download and extract.** 从 [Releases](https://github.com/YUHU-1st/launchpad-studio/releases/latest) 下载 `LaunchpadStudio-*-windows-x64.zip`，完整解压后运行 `LaunchpadStudio.exe`，无需 Python。Download the Windows ZIP, extract all files, then run the executable; do not run inside the archive.
+2. **连接 / Connect.** USB 连接 Launchpad，关闭可能占用 MIDI 端口的软件；进入“布局设置”→“扫描并连接全部 Launchpad”。Release competing MIDI applications, then open Layout Settings → Scan and Connect.
+3. **开始 / Start.** 第一次建议“性能监控”→“开始实时监控”；视频/音乐先在电脑端添加文件。Try Performance → Start, or import media on the PC before playing it.
+4. **调整 / Adjust.** 用左侧配色、亮度和模式细节调整效果；浏览页面不停止演示，点击新模式的开始按钮才接替输出。Adjust palette/brightness and mode settings; browsing pages does not interrupt playback.
 
-### 2.2 · 实时 VJ 背景
+[完整安装、升级、配对及排错 / Setup and troubleshooting](docs/GUIDE_ZH.md#安装与首次使用) · [English instructions](docs/GUIDE_EN.md#install-start-and-update)
 
-新增 **实时 VJ** 页面：采集系统回放或麦克风，实时估计 BPM、瞬态、频谱、能量、风格和情绪，用 GPU 生成舞台背景。内置霓虹隧道、激光矩阵、星际粒子、分形星云、几何万花筒、液态铬金、合成波日落、暗黑科技 8 种原创风格，支持音乐特征驱动的自动换景、柔和过渡及自动/手动配色。
+## 多板像多显示器一样排列 / Arrange pads like monitors
 
-1. 选择正在播放音乐的“系统声音”设备，或麦克风；节奏估计约需 3–12 秒，风格和情绪只是启发式估计，不是准确分类或生成式 AI 视频。
-2. 选择画幅（16:9、21:9、32:9、4:3、1:1、9:16 或自定义）、分辨率和 24/25/30/50/60 FPS；支持常用宽度下拉及任意宽高输入，保持比例投放，不拉伸。实际帧率取决于 GPU、分辨率和窗口数量，界面显示实测 FPS。
-3. 投屏显示器可多选，每个目标有独立全屏窗口，可同时开启小窗口预览。双击画面或 F11 切换全屏，Esc 关闭当前窗口；关闭最后一个窗口会停止 VJ。
-4. Alpha 选项提供真正的 RGBA 透明窗口，可叠加桌面或其他窗口；**普通 HDMI 信号不保留 Alpha**，外部透明合成需支持透明窗口采集/混合的工具。本版不提供 Spout、NDI 或透明视频文件导出。
-5. 开启灯板输出后，2.3 默认生成原生像素灯效；选择“原画采样”时才对 GPU 图像下采样。可与未选灯板的原模式并行运行，只浏览其他页面不会停止演示，“全部停止并熄灯”同时关闭投屏和 LED。
+[![新版布局设置，模拟双板 / Current layout settings with simulated pads](docs/media/layout-2.3.jpg)](docs/SHOWCASE.md#layout)
 
-灵敏度、静音阈值、运动速度、强度、密度和换景间隔均可调并自动保存；手机网页和 Android 客户端具有对应控制。
+| 联动方式 / Link mode | 使用逻辑 / How it works |
+| --- | --- |
+| 扩展 / Extended | 两块横排 16×8、竖排 8×16；工具和游戏扩大活动区域，不拉伸原来的方形 / Grow the native canvas/game area instead of stretching an 8×8 image |
+| 复制 / Mirror | 每块显示同一画面，普通模式页面统一启动与切换 / Show the same frame on every pad, controlled from one mode page |
+| 独立 / Independent | 布局页分配设备功能，再开始相应模式；同一功能共享引擎和参数 / Assign functions per device; devices using the same function share its engine/settings |
 
-[观看 8 种 VJ 风格演示](docs/media/vj-demo.mp4) · [GIF 预览](docs/media/vj-demo.gif) · [操作说明及验证范围](docs/VJ.md)
+所有模式保留完整拼接预览，可拖动板块移动或交换位置；“在实机显示编号”用数字灯光辨认设备，手机端也能调整布局。
 
-![8 种原创 GPU VJ 风格，使用模拟音乐特征](docs/media/vj-styles.png)
+Every mode retains the composite LED preview. Drag tiles to move/swap them, identify devices with illuminated numbers, and manage the same layout from mobile.
 
-视觉语言参考 [Butterchurn](https://github.com/jberg/butterchurn) 和 [Resolume 素材目录](https://resolume.com/footage)，未复制或分发其素材；演示由本项目的实际着色器渲染，使用明确标注的模拟节拍。
+## 大屏与灯板各司其职 / Separate screen and pad visuals
 
-### 下载与启动
+[![八种 GPU VJ 场景 / Eight GPU VJ scenes](docs/media/vj-styles.png)](docs/media/vj-demo.mp4)
 
-从 [最新 Release](https://github.com/YUHU-1st/launchpad-studio/releases/latest) 下载 Windows x64 压缩包，解压后运行 `LaunchpadStudio.exe`，无需安装 Python。
+[![十二种原生高对比 LED 风格 / Twelve native high-contrast LED styles](docs/media/vj-led-styles.png)](docs/media/vj-led-demo.mp4)
 
-1. 连接 Launchpad，并关闭可能独占 MIDI 端口的 Ableton 等软件。
-2. 启动程序，进入 **布局设置**，点击“扫描并连接全部 Launchpad”。软件会自动识别型号并匹配 MIDI 输入/输出。
-3. 打开需要的页面完成设置，然后点击“开始”“播放”或“启用”让该模式接管灯光。
+分别多选显示器与灯板：大屏保持视频分辨率，灯板自动匹配所选设备的原生布局；两者共享节拍、估计情绪和配色，图形、速度、强度与密度独立。支持仅投屏、仅原生灯板或同时输出，未选灯板可保留其他模式。
 
-仅浏览其他模式页面不会打断当前灯光、音频、游戏或性能监控。关闭主窗口后软件继续在系统托盘运行；右键托盘图标可重新打开或完全退出。顶部的“全部停止并熄灯”可以立即结束所有活动并关闭全部 LED。
+Select screens and pads separately. Screens retain their video resolution; pads use the selected native layout. Graphics, motion and detail can differ while sharing audio features and palette. Screen-only, native-LED-only and combined output are available.
 
-### Android 局域网遥控
+[VJ 设置与现场限制 / VJ guide](docs/VJ.md) · [独立投屏/灯板演示 / Independent-output demo](docs/media/vj-led-demo.mp4)
 
-桌面端现已内置局域网遥控服务。Android 客户端可控制性能监控、宏按键、视频、音乐灯光、实时拾音、时钟/日历/天气/专注计时器和 Launchpad 设备设置；出于输入冲突考虑，贪吃蛇、打地鼠和两种音游不会暴露给手机端。
+## 手机遥控 / Control from your phone
 
-1. 让 Windows 电脑与 Android 手机连接同一个局域网，启动桌面端后点击顶部 **手机遥控**。
-2. 记下窗口中的 `http://局域网IP:8765/` 和 6 位配对 PIN；首次出现 Windows 防火墙提示时只需允许专用网络访问。
-3. 安装 Release 中的 `LaunchpadStudioRemote-*.apk`，填入地址和 PIN 即可。也可以直接用手机浏览器打开该地址。
+![手机版 Studio 与布局页，浏览器预览和模拟灯板 / Mobile Studio and Layout, browser preview with simulated pads](docs/media/remote-overview-2.3.jpg)
 
-手机端的 **Windows 媒体** 页面通过系统媒体会话控制网易云音乐、PotPlayer、AIMP 等兼容播放器，支持播放/暂停、上/下一曲、停止、循环、随机、实时拖动进度、系统音量、静音以及默认音频输出设备切换。播放器向 Windows 暴露的标题、歌手、专辑、封面和时间轴会持续同步；歌词会按歌曲元数据从 LRCLIB 获取并逐行同步。若播放器没有向 Windows 系统媒体接口暴露某项能力，对应控制可能不可用，但基础媒体键仍会作为播放/上下曲的后备方式。
+同一局域网 → 桌面顶部“手机遥控”查看地址和六位 PIN → 安装 Release 的 Android APK，或用手机浏览器打开该地址。可调整非游戏功能、布局、VJ 与预设，以及兼容 Windows 播放器的播放/暂停、进度、封面、同步歌词、系统音量/静音和默认音频输出。
 
-### 多 Launchpad 设置
+Use the same LAN → open the PC's Mobile Remote dialog for its address and PIN → install the APK or visit the address in a browser. Control non-game modes, layout, VJ, presets, compatible Windows media sessions, lyrics and audio settings.
 
-**布局设置**现在是与性能监控、音乐演示并列的一级页面。点击“扫描并连接全部 Launchpad”后，软件自动识别设备、配对 MIDI 端口并编号；点击“在实机显示编号”可用 LED 数字辨认设备。桌面中央在所有页面始终显示实际连接设备的完整灯光画布，比例随横向、纵向或不规则布局自动变化，直接拖动板块即可移动；拖到另一台设备上会交换位置。
+电脑端必须保持运行，文件在电脑导入；手机不上传文件、不接收电脑音频，游戏不开放手机控制。只用于可信局域网，不要把遥控端口暴露到公网。
 
-**扩展画布**会把全部设备拼成一块宽幅或高幅像素区域，**复制画面**会同步相同灯效，这两种联动都由普通功能页面统一启动和切换，不再逐台分配。只有选择 **独立模式** 后，布局页面才显示每台设备的功能选择。独立模式中的停止按钮只停止当前功能，顶部“全部停止并熄灯”仍会关闭所有设备。
+The PC remains the host. Import files there; mobile file upload, PC-audio streaming and mobile game control are not provided. Keep the PIN-protected HTTP service on a trusted LAN, not the public Internet.
 
-Android 客户端和手机网页提供同一套 **布局** 页面，并在所有标签顶部持续显示各实机的实时 LED 状态。手机端同样支持一键扫描连接、图形化切换扩展/复制/独立、拖动移动或交换设备、独立模式分配功能，以及用灯光显示实机编号。
+## 支持范围与须知 / Compatibility and expectations
 
-### 主要功能
+- **平台 / Platforms:** Windows x64；Android 8.0+ 遥控，DJI RC Plus Android 10 有回归记录。当前软件界面为中文，文档中英双语。The current application UI is Chinese; documentation is bilingual.
+- **灯板 / Pads:** Original/MK1、S、Mini MK1/MK2/MK3、MK2、X、Pro、Pro MK3；旧款红绿设备映射为可用颜色。Nine profiles, with legacy supported-color mapping; not every profile has been physically tested.
+- **传感器 / Sensors:** GPU 占用当前依赖 NVIDIA `nvidia-smi`；温度取决于硬件、权限和 .NET 8 辅助程序，不伪造读数。GPU usage currently relies on NVIDIA; available temperature readings vary.
+- **媒体 / Media:** 视频模式不播放视频音轨，音乐变速会改变音高，外部播放器进度/循环能力取决于其 Windows 媒体接口。Pixel video has no soundtrack playback; speed changes pitch; external-player capabilities vary.
+- **VJ / Stage:** OpenGL 3.3；帧率取决于硬件，音乐风格/情绪是启发式估计，普通 HDMI/DP 不传递独立 Alpha，本版无 Spout/NDI/DMX。See the VJ guide for stage and transparency limits.
+- **验证 / Evidence:** 2.3 经 GPU、打包程序和 RC Plus 回归；本次多板使用模拟设备，新的实体多板及多实体显示器回归仍需现场验证。Preview media is labeled, not presented as physical stage footage.
 
-- **性能与温度监控**：显示 CPU、内存、GPU、磁盘、网络和磁盘吞吐量，以及 CPU、GPU、主板和存储温度。
-- **宏按键**：每个键可独立设置颜色与热键、文字输入、程序/文件、网址、命令、PowerShell、媒体控制、按键序列、鼠标操作、系统操作、音量和多步骤组合动作；支持单独清除指定按键。
-- **宏与灯光并行**：在性能、视频、音乐、实时拾音、时钟、日历、天气和专注计时等非游戏模式开启宏控制后，灯光演示保持不变，实体按键仍可触发宏。游戏运行时输入自动优先交给游戏。
-- **视频像素播放器**：播放列表、拖动进度、上下一个、暂停、0.5×–3× 变速、循环，以及原色、热图、边缘、辉光、万花筒和故障滤镜。
-- **音乐灯光秀**：离线分析 BPM、情绪、能量和风格，提供频谱、波形、涟漪、星云、火焰、隧道等多种灯效并与声音同步。
-- **实时拾音**：支持麦克风和 Windows WASAPI 系统回放，提供频率范围、响度范围、灵敏度、噪声阈值、速度和扩散等低延迟参数。
-- **参数与预设**：自动记忆上次设置，支持恢复默认、命名预设、最近预设，以及音乐、拾音和视频模式间复制粘贴兼容参数。
-- **多 Launchpad 画布**：一键发现、连接并编号多台 Launchpad；桌面与手机端在每个模式都显示实际 LED 拼接画布，并可直接拖动移动或交换设备。扩展模式会生成原生宽幅频谱、性能灯柱和像素视频；复制模式同步灯效；独立模式才显示逐台功能分配，且各设备按键输入互不干扰。
-- **桌面工具**：数字时钟、日历、免密钥实时天气和专注计时器。
-- **解压游戏**：可调难度与自动关卡的穿墙贪吃蛇、打地鼠、得分庆祝灯效和实时计分板。
-- **自动谱面音游**：导入 WAV、MP3、OGG、FLAC 或 AIFF 后，软件预先识别节拍、瞬态和频段并自动生成谱面。瀑布音游与环形街机风格音游均支持简单/普通/困难、1–5 级音符速度、4–8 个琴键、暂停/继续、连击、判定、准确率和最高分。
+## 文档导航 / Documentation
 
-### 界面截图
-
-每段独立视频都录制真实软件界面与同步的虚拟 Launchpad 灯板，便于在下载前完整预览操作区、参数和灯效。
-
-#### 1. 性能与温度监控
-
-将 CPU、内存、GPU、磁盘、网络与磁盘吞吐量映射成动态灯柱，圆形控制键显示最高温度趋势；界面同时列出 CPU、GPU、主板和存储温度，并提示传感器权限状态。支持整体配色、亮度和并行宏控制。
-
-[观看独立视频](docs/media/performance-demo.mp4)
-
-![性能与温度监控](docs/media/overview.png)
-
-#### 2. 宏按键
-
-点击屏幕键位即可配置单键颜色和操作，支持热键、文字、文件/程序、网址、命令、PowerShell、媒体键、按键序列、鼠标、系统操作、音量及带等待步骤的组合动作。可测试、覆盖或只清除当前按键；非游戏灯效运行时也能独立启用宏控制。
-
-[观看独立视频](docs/media/macros-demo.mp4)
-
-![宏按键配置](docs/media/macros.png)
-
-#### 3. 视频像素播放器
-
-把视频实时缩放到对应 Launchpad 布局，提供可拖动进度条、上下一个、播放/暂停、0.5×–3× 速度、列表/单曲/不循环和播放列表。原色、热图、边缘、单色辉光、万花筒、故障滤镜可继续调节帧率、饱和度、对比度、伽马与阈值，并支持预设及跨模式参数复制。
-
-[观看独立视频](docs/media/video-player-demo.mp4)
-
-![视频像素播放器](docs/media/video-player.png)
-
-#### 4. 音乐灯光播放器
-
-导入音频后离线识别 BPM、情绪、能量和风格，音频播放、变速、定位与灯光使用同一时间轴。频谱、对称频谱、波形、脉冲、涟漪、星云、雨幕、火焰、隧道和棋盘均可调频段、响度、灵敏度、噪声阈值、速度与扩散，并保存为预设。
-
-[观看独立视频](docs/media/music-show-demo.mp4)
-
-![音乐灯光播放器](docs/media/music-show.png)
-
-#### 5. 实时拾音
-
-可选择麦克风或 Windows WASAPI 系统回放设备，以约 20–45 ms 目标延迟驱动完整音乐可视化引擎。输入设备、风格、频率/响度范围、灵敏度、门限、速度、扩散、配色和亮度均可实时调整并自动记忆。
-
-[观看独立视频](docs/media/live-audio-demo.mp4)
-
-![实时拾音](docs/media/live-audio.png)
-
-#### 6. 桌面工具
-
-数字时钟滚动显示 24 小时时间，日历显示日期与星期进度，天气无需 API Key 即可展示气温、体感、降水、湿度和风速，专注计时器支持 1–180 分钟及暂停/继续。独立视频依次预览四项工具及对应灯板画面。
-
-[观看独立视频](docs/media/desktop-utilities-demo.mp4)
-
-![数字时钟工具](docs/media/utilities.png)
-
-#### 7. 贪吃蛇
-
-键盘或实机顶排 `↑ ↓ ← →` 控制，越过任意边缘会从对侧出现；简单/普通/困难影响移动节奏，得分自动提升关卡速度。界面实时显示得分、关卡和最高分，吃到食物时播放庆祝灯效。
-
-[观看独立视频](docs/media/snake-demo.mp4)
-
-![贪吃蛇与实时计分板](docs/media/casual-games.png)
-
-#### 8. 打地鼠
-
-按下随机亮起的实体按键得分，每次命中会刷新完整反应时间；难度控制反应窗口与机会数量，关卡随得分提升。剩余机会同时显示在侧边灯列和实时计分板，命中触发得分光效。
-
-[观看独立视频](docs/media/whack-a-mole-demo.mp4)
-
-![打地鼠与实时计分板](docs/media/whack-a-mole.png)
-
-#### 9. 瀑布音游
-
-导入音乐后预先分析节拍、瞬态和频段生成谱面，音符从顶部落向底部判定线。可选简单/普通/困难、1–5 级速度和 4–8 键；支持暂停/继续，并实时统计 Perfect/Great/Good/Miss、连击、准确率、得分与最高分。
-
-[观看独立视频](docs/media/waterfall-demo.mp4)
-
-![自动谱面瀑布音游](docs/media/waterfall-game.png)
-
-#### 10. 环形音游
-
-使用同一套音乐分析器自动编谱，音符从中心向 Launchpad 外圈目标扩散，形成类似环形街机音游的演奏体验。难度、速度、键数、暂停、判定、连击、准确率和最高分功能与瀑布模式一致。
-
-[观看独立视频](docs/media/radial-rhythm-demo.mp4)
-
-![自动谱面环形音游](docs/media/rhythm-game.png)
-
-### 支持设备
-
-内置 Launchpad MK1、Launchpad S、Launchpad Mini MK1/MK2/MK3、Launchpad MK2、Launchpad X、Launchpad Pro 和 Launchpad Pro MK3 布局。RGB 设备输出全彩灯光，红绿双色旧型号会自动执行最接近的颜色转换；Pro 型号额外适配左侧和底部控制行。
-
-### 源码运行与构建
-
-双击 `LaunchpadStudio.vbs` 或 `start.bat` 可静默准备环境并启动；`安装桌面快捷方式.bat` 用于创建桌面快捷方式，`build_exe.bat` 用于只构建 Windows 程序。正式双端发布统一使用 `scripts/build_release.ps1`，版本号集中保存在根目录 `VERSION`。
-
-Android 客户端源码位于 `android/`，使用 Android SDK 35、JDK 17 和 Gradle/Android Gradle Plugin 构建：
-
-```powershell
-gradle -p android assembleDebug
-```
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1
-```
-
-配置和预设保存在 `data/settings.json`，崩溃诊断写入 `data/crash.log` 与 `data/native_crash.log`。天气数据来自 [Open-Meteo](https://open-meteo.com/)，无需 API Key。
-
----
-
-## English
-
-### 2.3 · Pulse Canvas: independent screen and pad rendering
-
-Eight GPU screen scenes now pair with twelve native, high-contrast LED styles: spectrum, mirrored spectrum, beat squares, bouncing columns, pixel rain, scanning lasers, rotating rays, checkerboard hits, pixel spirals, beat arrows, particle bursts and waveform lines. Screen and pad style/speed/intensity/detail are separate; the palette, beat envelope and estimated mood remain shared. Original-image sampling remains optional.
-
-Select any connected Launchpads and monitors. LED resolution follows the selected layout: 8×8 for one pad, 16×8 for two horizontally arranged pads, 8×16 vertically, or 8×8 per mirrored pad. Layout gaps are preserved; **screen resolution never changes with pad selection**. Unselected pads keep their previous mode, LED-only output is available, and starting another LED mode in unified layouts preserves the VJ projection. Android exposes the same controls.
-
-[Twelve-style LED and independent-screen demo](docs/media/vj-led-demo.mp4) · [Setup and verified scope](docs/VJ.md). Demo media uses labeled simulated music, not physical Launchpad footage.
-
-### 2.2 · Real-time VJ backgrounds
-
-The new **实时 VJ** page captures WASAPI system playback or microphone audio and drives eight original GPU styles: neon tunnel, laser grid, starfield, fractal nebula, geometric kaleidoscope, liquid chrome, synthwave sunset, and dark techno. Streaming beats, spectrum and energy control motion and brightness; automatic sequencing and palette selection use explicitly heuristic style/mood estimates, not an accurate genre classifier or generative-AI video model. Tempo needs approximately 3–12 seconds to settle.
-
-- Choose one or several connected monitors for separate fullscreen outputs, optionally alongside a small preview window. Double-click or F11 toggles fullscreen, Esc closes that output, and closing the last output stops VJ.
-- Choose 16:9, 21:9, 32:9, 4:3, square, portrait or custom aspect; set output width/height and 24/25/30/50/60 FPS. Presentation preserves aspect. Actual FPS is displayed and depends on GPU load, resolution and window count; OpenGL 3.3 is required.
-- Alpha enables genuine premultiplied RGBA and transparent desktop windows. **Normal HDMI does not transport alpha**. External compositing needs a tool supporting transparent window capture; this version does not provide Spout, NDI or alpha-video export.
-- Use independent native LED rendering, or choose Original Image Sampling to map the GPU picture. Selected pads can run alongside other modes on unselected pads. Merely browsing pages never interrupts the show; Stop All / Blackout stops VJ outputs and LEDs together.
-- Sensitivity, silence gate, motion speed, intensity, density and scene interval are adjustable and remembered. Android and mobile web expose the same VJ controls, including monitor multi-selection.
-
-[Watch all eight styles](docs/media/vj-demo.mp4) · [GIF](docs/media/vj-demo.gif) · [Setup and verification details](docs/VJ.md)
-
-![Original GPU VJ styles rendered with simulated music features](docs/media/vj-styles.png)
-
-Visual references: [Butterchurn](https://github.com/jberg/butterchurn) and [Resolume footage](https://resolume.com/footage). No third-party footage or presets are copied/distributed. This preview uses the production shaders with explicitly labeled simulated beats.
-
-### Download and start
-
-Download the Windows x64 package from the [latest release](https://github.com/YUHU-1st/launchpad-studio/releases/latest), extract it, and run `LaunchpadStudio.exe`. Python is not required.
-
-1. Connect a Launchpad and close Ableton or any application that may own its MIDI ports.
-2. Open **Layout Settings** and press **Scan and Connect All Launchpads**. Models and MIDI input/output pairs are detected automatically.
-3. Configure a page, then press its Start, Play, or Enable button to hand LED ownership to that mode.
-
-Browsing another page does not interrupt the current lighting, audio, game, or performance monitor. Closing the main window keeps the service in the notification area. Use the tray menu to reopen or exit, or press **Stop All and Black Out** in the header to end every activity and switch off all LEDs immediately.
-
-### Android LAN remote
-
-Launchpad Studio now hosts a PIN-protected LAN remote service. The Android client controls every non-game desktop feature, including performance monitoring, macros, pixel video, music shows, live audio, clock/calendar/weather/focus utilities, presets, and Launchpad device setup. Games stay local so remote input cannot interfere with gameplay.
-
-The **Windows Media** view uses Windows system media sessions for compatible players such as NetEase Cloud Music, PotPlayer, and AIMP. It supports play/pause, previous/next, stop, repeat, shuffle, live seeking, system volume/mute, and switching the default Windows audio output. Title, artist, album, cover art, and timeline data are streamed to the phone; synchronized lyrics are resolved through LRCLIB when metadata is available. Open **Phone Remote** on the desktop to see the LAN URL and six-digit pairing PIN, then enter both in the release APK or a mobile browser on the same network.
-
-### Multi-Launchpad setup
-
-**Layout Settings** is now a first-level page alongside Performance and Music. Press **Scan and Connect All Launchpads** to detect units, pair their MIDI ports, and number them automatically. **Show Number on LEDs** identifies a physical unit. The central desktop canvas remains visible in every mode, shows the live LED state of the complete connected layout, scales to horizontal, vertical, or irregular arrangements, and lets you drag a tile to move it or drop it on another unit to swap positions.
-
-**Extended Canvas** combines units into a wide or tall pixel surface, while **Mirror** sends the same show to every unit. Both follow whichever normal feature page is started, so there is no per-device assignment. Per-device function selectors appear only in **Independent Mode**. Each independent page's Stop action affects only that function; **Stop All and Black Out** still clears every unit.
-
-The Android client and mobile web remote provide the same simplified **Layout** page and keep an actual live LED composite above every tab. They support one-tap discovery, graphical routing choices, drag-to-move and drag-to-swap, independent-only function assignment, and on-device numeric identification.
-
-### Highlights
-
-- **Performance and temperature monitoring:** CPU, memory, GPU, disk, network and storage throughput, plus CPU, GPU, motherboard and drive temperatures.
-- **Per-pad macros:** colors and actions for hotkeys, text, files/apps, URLs, commands, PowerShell, media keys, key sequences, mouse actions, system actions, volume, and multi-step combined workflows. Any selected pad can be cleared independently.
-- **Macros alongside lighting:** enable parallel macro control on any non-game mode. The active animation remains untouched while physical pads trigger their configured macros; games automatically retain input priority.
-- **Pixel video player:** playlists, seeking, previous/next, pause, 0.5x–3x speed, loop modes, and original-color, heatmap, edge, glow, kaleidoscope, and glitch filters.
-- **Analyzed music shows:** offline BPM, mood, energy and style analysis with synchronized spectrum, waveform, ripple, nebula, flame, tunnel, and other visual styles.
-- **Low-latency live audio:** microphone and Windows WASAPI loopback capture with frequency, loudness, sensitivity, gate, speed, and spread controls.
-- **Persistent parameters and presets:** automatic restore, defaults, named and recent presets, plus compatible parameter copy/paste across music, live audio, and video.
-- **Multi-Launchpad canvas:** discover, connect, and number multiple units in one step. Desktop and mobile show the actual composite LED state in every mode and let tiles be moved or swapped by dragging. Extended layouts render native wide spectra, performance bars, and pixel video; Mirror synchronizes output; Independent alone exposes per-device function assignment without crossing pad input.
-- **Desktop utilities:** digital clock, calendar, key-free live weather, and a focus timer.
-- **Casual games:** difficulty levels, automatic stages, wrap-around Snake, slower Whack-a-Mole, live scoreboards, and score celebration effects.
-- **Auto-chart rhythm games:** import WAV, MP3, OGG, FLAC, or AIFF and analyze beats, transients, and frequency bands before play. Waterfall and radial arcade-style games support Easy/Normal/Hard charts, note speed 1–5, 4–8 lanes, pause/resume, combo, timing grades, accuracy, and high scores.
-
-### Screenshots
-
-Each feature video records the real application UI and synchronized virtual Launchpad canvas, so its controls, parameters, and LED output can be previewed before downloading.
-
-#### 1. Performance and temperatures
-
-Maps CPU, memory, GPU, disk, network, and storage throughput to animated LED columns. Round controls visualize the hottest sensor while the panel reports CPU, GPU, motherboard, and drive temperatures and sensor permission status. Global palette, brightness, and parallel macro control remain available.
-
-[Watch this feature](docs/media/performance-demo.mp4)
-
-![Performance and temperature monitoring](docs/media/overview.png)
-
-#### 2. Per-pad macros
-
-Click a visual pad to assign its color and action: hotkey, text, file/app, URL, command, PowerShell, media key, key sequence, mouse, system command, volume, or a multi-step workflow with delays. Test, overwrite, or clear only the selected pad, and optionally run macros independently over any non-game light show.
-
-[Watch this feature](docs/media/macros-demo.mp4)
-
-![Per-pad macro editor](docs/media/macros.png)
-
-#### 3. Pixel video player
-
-Downscales video in real time to the active Launchpad layout, with a draggable timeline, previous/next, play/pause, 0.5x–3x speed, playlist, and no-loop/single/list loop modes. Original, heatmap, edge, monochrome glow, kaleidoscope, and glitch filters expose FPS, saturation, contrast, gamma, and threshold controls with presets and cross-mode copy/paste.
-
-[Watch this feature](docs/media/video-player-demo.mp4)
-
-![Pixel video player](docs/media/video-player.png)
-
-#### 4. Analyzed music light show
-
-Offline analysis identifies BPM, mood, energy, and style. Playback, speed, seeking, and LEDs share one timeline. Spectrum, mirrored spectrum, waveform, pulse, ripple, nebula, rain, flame, tunnel, and checkerboard styles expose frequency, loudness, sensitivity, gate, speed, and spread controls that can be saved as presets.
-
-[Watch this feature](docs/media/music-show-demo.mp4)
-
-![Analyzed music light show](docs/media/music-show.png)
-
-#### 5. Live audio capture
-
-Select a microphone or Windows WASAPI loopback input and drive the full visualization engine at a target latency of roughly 20–45 ms. Device, style, frequency/loudness range, sensitivity, gate, speed, spread, palette, and brightness update live and persist automatically.
-
-[Watch this feature](docs/media/live-audio-demo.mp4)
-
-![Live audio capture](docs/media/live-audio.png)
-
-#### 6. Desktop utilities
-
-The digital clock scrolls 24-hour time, Calendar shows date and weekday progress, key-free Weather displays temperature, apparent temperature, rain, humidity, and wind, and Focus Timer supports 1–180 minutes with pause/resume. The feature video previews all four tools and their LED frames in sequence.
-
-[Watch this feature](docs/media/desktop-utilities-demo.mp4)
-
-![Digital clock utility](docs/media/utilities.png)
-
-#### 7. Snake
-
-Use the keyboard or the physical top-row `↑ ↓ ← →` controls. Crossing any edge wraps to the opposite side; Easy/Normal/Hard changes pacing and score-driven stages increase speed. The panel updates score, stage, and high score live, with a celebration effect after food is collected.
-
-[Watch this feature](docs/media/snake-demo.mp4)
-
-![Snake and live scoreboard](docs/media/casual-games.png)
-
-#### 8. Whack-a-Mole
-
-Hit the randomly lit physical pad before it expires; every successful hit restores the full response window. Difficulty controls timing and available chances while stages increase with score. Remaining chances appear on both the side LED column and live scoreboard, and hits trigger a score effect.
-
-[Watch this feature](docs/media/whack-a-mole-demo.mp4)
-
-![Whack-a-Mole and live scoreboard](docs/media/whack-a-mole.png)
-
-#### 9. Waterfall rhythm game
-
-Import music to analyze beats, transients, and bands before generating a chart. Notes descend toward the bottom judgment line. Choose Easy/Normal/Hard, speed 1–5, and 4–8 lanes; pause/resume and live Perfect/Great/Good/Miss, combo, accuracy, score, and high-score tracking are included.
-
-[Watch this feature](docs/media/waterfall-demo.mp4)
-
-![Auto-chart Waterfall rhythm game](docs/media/waterfall-game.png)
-
-#### 10. Radial rhythm game
-
-The same music analyzer generates a chart whose notes expand from the center toward outer Launchpad targets for a radial arcade-style experience. Difficulty, speed, lane count, pause, grades, combo, accuracy, score, and high-score controls match Waterfall mode.
-
-[Watch this feature](docs/media/radial-rhythm-demo.mp4)
-
-![Auto-chart radial rhythm game](docs/media/rhythm-game.png)
-
-### Supported hardware
-
-Built-in profiles cover Launchpad MK1, Launchpad S, Launchpad Mini MK1/MK2/MK3, Launchpad MK2, Launchpad X, Launchpad Pro, and Launchpad Pro MK3. RGB devices receive full color; legacy red/green devices receive automatic nearest-color conversion. Pro layouts also include their left and bottom control rows.
-
-### Development and packaging
-
-Double-click `LaunchpadStudio.vbs` or `start.bat` for silent environment setup and launch. Use `安装桌面快捷方式.bat` to create a desktop shortcut and `build_exe.bat` to create the Windows distribution.
-
-The Android wrapper lives in `android/` and builds with Android SDK 35, JDK 17, and the Gradle/Android Gradle Plugin toolchain:
-
-```powershell
-gradle -p android assembleDebug
-```
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-Settings and presets live in `data/settings.json`; diagnostics are written to `data/crash.log` and `data/native_crash.log`. Weather data is provided by [Open-Meteo](https://open-meteo.com/) without an API key.
-
-Launchpad is a trademark of Focusrite Audio Engineering Ltd. This independent project is not affiliated with or endorsed by Novation.
+| 想做什么 / Goal | 去哪里 / Read |
+| --- | --- |
+| 安装、连接、逐项使用 / Get started | [中文手册](docs/GUIDE_ZH.md) · [English guide](docs/GUIDE_EN.md) |
+| 看每个功能的截图、独立视频与流程 / Explore every feature | [完整演示库 / Complete gallery](docs/SHOWCASE.md) |
+| VJ 多目标、Alpha 与现场设置 / Stage setup | [VJ 专项指南 / VJ guide](docs/VJ.md) |
+| 源码运行、测试、打包 / Develop and build | [开发指南 / Development](docs/DEVELOPMENT.md) |
+| 版本变化 / Release history | [Changelog](CHANGELOG.md) · [2.3 release notes](docs/RELEASE_2.3.0.md) |
+| 测试与历史交接 / Tests and archive | [文档索引 / Docs index](docs/README.md) |
+
+独立项目，与 Novation 无隶属或背书关系；Launchpad 属于相应商标权利人。第三方依赖说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+An independent project, not affiliated with or endorsed by Novation. Launchpad belongs to its trademark holder; see the dependency notices for attribution.
